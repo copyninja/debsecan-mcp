@@ -9,7 +9,21 @@ dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
+    "python-apt @ git+https://salsa.debian.org/apt-team/python-apt.git",
 ]
+
+[project.scripts]
+debsecan-mcp = "debsecan_mcp.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 line-length = 88

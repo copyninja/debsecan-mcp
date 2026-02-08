@@ -5,19 +5,10 @@ from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
-try:
-    import apt_pkg
+import apt_pkg
 
-    apt_pkg.init()
-    version_compare = apt_pkg.version_compare
-except ImportError:
-    logger.warning("apt_pkg not available, version comparison might be inaccurate")
-
-    def version_compare(v1, v2):
-        # Very crude fallback if apt_pkg is missing
-        if v1 == v2:
-            return 0
-        return 1 if v1 > v2 else -1
+apt_pkg.init()
+version_compare = apt_pkg.version_compare
 
 
 class Version:
