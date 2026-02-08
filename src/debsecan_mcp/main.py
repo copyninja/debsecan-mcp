@@ -130,40 +130,45 @@ async def research_cves(cves: list[str]):
     logger.info("Researching CVEs: %s", cves)
 
     results = []
+    installed_pkg_names = {pkg.name for pkg in installed_packages}
+    installed_source_names = {pkg.source for pkg in installed_packages}
+
     for cve in cves:
         cve = cve.strip().upper()
         # Search for this CVE in our vulnerability feed across all packages
         found_vulns = []
-        for pkg_vulns in vulnerability_feed.values():
+        for pkg_name, pkg_vulns in vulnerability_feed.items():
             for v in pkg_vulns:
                 if v.bug_id == cve:
-                    # Enrich with EPSS
-                    epss_info = epss_data.get(
-                        v.bug_id, {"score": 0.0, "percentile": 0.0}
-                    )
-                    v.epss_score = epss_info["score"]
-                    v.epss_percentile = epss_info["percentile"]
                     found_vulns.append(v)
                     break
-            if found_vulns:
-                break
 
-        if found_vulns:
-            v = found_vulns[0]
-            percentile_str = f"{v.epss_percentile * 100:.2f}%"
-            res = (
-                f"### {v.bug_id}\n"
-                f"- **Package**: {v.package}\n"
-                f"- **Urgency**: {v.urgency}\n"
-                f"- **EPSS Score**: {v.epss_score:.4f}\n"
-                f"- **EPSS Percentile**: {percentile_str}\n"
-                f"- **Fix Available**: {'Yes' if v.fix_available else 'No'}\n"
-                f"- **Remote**: {v.remote}\n"
-                f"- **Description**: {v.description}\n"
-            )
-            results.append(res)
-        else:
+        if not found_vulns:
             results.append(f"### {cve}\nNo detailed information found in current feed.")
+            continue
+
+        # Prioritize vulns affecting installed packages (binary or source)
+        # Sort so installed ones come first
+        found_vulns.sort(key=lambda x: x.package in installed_pkg_names or x.package in installed_source_names, reverse=True)
+
+        v = found_vulns[0]
+        epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
+        percentile_str = f"{epss_info['percentile'] * 100:.2f}%"
+
+        is_installed = v.package in installed_pkg_names or v.package in installed_source_names
+        status_str = " (INSTALLED)" if is_installed else ""
+
+        res = (
+            f"### {v.bug_id}{status_str}\n"
+            f"- **Package**: {v.package}\n"
+            f"- **Urgency**: {v.urgency}\n"
+            f"- **EPSS Score**: {epss_info['score']:.4f}\n"
+            f"- **EPSS Percentile**: {percentile_str}\n"
+            f"- **Fix Available**: {'Yes' if v.fix_available else 'No'}\n"
+            f"- **Remote**: {v.remote}\n"
+            f"- **Description**: {v.description}\n"
+        )
+        results.append(res)
 
     return "\n---\n".join(results)
 

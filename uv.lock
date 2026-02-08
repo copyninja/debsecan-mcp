@@ -195,11 +195,12 @@ wheels = [
 [[package]]
 name = "debsecan-mcp"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic" },
+    { name = "python-apt" },
     { name = "python-dotenv" },
 ]
 
@@ -208,6 +209,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.2.0" },
     { name = "pydantic", specifier = ">=2.7.0" },
+    { name = "python-apt", git = "https://salsa.debian.org/apt-team/python-apt.git" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
 
@@ -502,6 +504,11 @@ wheels = [
 crypto = [
     { name = "cryptography" },
 ]
+
+[[package]]
+name = "python-apt"
+version = "3.1.0"
+source = { git = "https://salsa.debian.org/apt-team/python-apt.git#d44043b6df5cb010f3496fc31033c0b6e1f4f021" }
 
 [[package]]
 name = "python-dotenv"

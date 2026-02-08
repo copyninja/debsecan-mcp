@@ -102,7 +102,7 @@ class PackageFile:
                         pkg = []
                     continue
 
-                if line[0] in " \t":
+                if line.startswith((" ", "\t")):
                     # Continuation line
                     if not pkg:
                         logger.warning(
@@ -140,7 +140,7 @@ def get_installed_packages(status_file: str = "/var/lib/dpkg/status") -> list[Pa
             pkg_status = fields.get("Status", "")
             source_content = fields.get("Source")
 
-            if pkg_name and pkg_version and "installed" in pkg_status:
+            if pkg_name and pkg_version and pkg_status.endswith(" installed"):
                 pkg_source = pkg_name
                 pkg_source_version = pkg_version
 
