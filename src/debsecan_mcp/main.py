@@ -82,14 +82,19 @@ async def list_vulnerabilities(suite: str | None = None):
             if v.is_vulnerable(pkg):
                 # Enrich with EPSS score and percentile
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
-                v.epss_score = epss_info["score"]
-                v.epss_percentile = epss_info["percentile"]
-                detected_vulnerabilities.append(v)
+                # Create a shallow copy to avoid mutating the feed data
+                import copy
+                v_copy = copy.copy(v)
+                v_copy.epss_score = epss_info["score"]
+                v_copy.epss_percentile = epss_info["percentile"]
+                # Track the actual installed package that matched
+                v_copy.installed_package = pkg.name
+                detected_vulnerabilities.append(v_copy)
 
-    # Deduplicate by bug_id + package
+    # Deduplicate by bug_id + installed_package
     unique_vulns = {}
     for v in detected_vulnerabilities:
-        key = (v.bug_id, v.package)
+        key = (v.bug_id, v.installed_package)
         if key not in unique_vulns:
             unique_vulns[key] = v
 
@@ -102,10 +107,12 @@ async def list_vulnerabilities(suite: str | None = None):
             output.append(f"## {cat.upper()} VULNERABILITIES")
             for v in vulns:
                 desc = v.description[:150]
-                percentile_str = f"{v.epss_percentile * 100:.2f}%"
+                percentile_str = f"{getattr(v, 'epss_percentile', 0.0) * 100:.2f}%"
+                # Report both source (from feed) and the actual installed package
+                package_info = f"{v.package} (installed: {v.installed_package})" if v.package != v.installed_package else v.package
                 output.append(
-                    f"- **{v.bug_id}** ({v.package}): {desc}... "
-                    f"[EPSS: {v.epss_score:.4f}, Percentile: {percentile_str}]"
+                    f"- **{v.bug_id}** ({package_info}): {desc}... "
+                    f"[EPSS: {getattr(v, 'epss_score', 0.0):.4f}, Percentile: {percentile_str}]"
                 )
             output.append("")
 
