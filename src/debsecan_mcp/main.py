@@ -73,10 +73,11 @@ async def list_vulnerabilities(suite: str | None = None):
     detected_vulnerabilities = []
 
     for pkg in installed_packages:
-        # Check both binary package name and source package name
-        relevant_vulns = vulns_by_pkg.get(pkg.name, [])
-        if pkg.source != pkg.name:
-            relevant_vulns.extend(vulns_by_pkg.get(pkg.source, []))
+        # Try source package first, fallback to binary package (matching debsecan logic)
+        # debsecan uses: try vulns[source], if KeyError then try vulns[binary]
+        relevant_vulns = vulns_by_pkg.get(pkg.source, None)
+        if relevant_vulns is None:
+            relevant_vulns = vulns_by_pkg.get(pkg.name, [])
 
         for v in relevant_vulns:
             if v.is_vulnerable(pkg):
