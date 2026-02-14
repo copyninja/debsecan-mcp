@@ -102,25 +102,14 @@ async def list_vulnerabilities(suite: str | None = None):
     categorized = vulnerability.categorise_vulnerabilities(list(unique_vulns.values()))
 
     # Format output for the LLM
-    output = []
+    output = {}
     for cat, vulns in categorized.items():
-        if vulns:
-            output.append(f"## {cat.upper()} VULNERABILITIES")
-            for v in vulns:
-                desc = v.description[:150]
-                percentile_str = f"{getattr(v, 'epss_percentile', 0.0) * 100:.2f}%"
-                # Report both source (from feed) and the actual installed package
-                package_info = f"{v.package} (installed: {v.installed_package})" if v.package != v.installed_package else v.package
-                output.append(
-                    f"- **{v.bug_id}** ({package_info}): {desc}... "
-                    f"[EPSS: {getattr(v, 'epss_score', 0.0):.4f}, Percentile: {percentile_str}]"
-                )
-            output.append("")
+        output[cat] = [v.bug_id for v in vulns]
 
     if not output:
         return "No vulnerabilities detected on the system."
 
-    return "\n".join(output)
+    return output
 
 
 @mcp.tool()
