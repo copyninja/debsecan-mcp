@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
     "python-apt @ git+https://salsa.debian.org/apt-team/python-apt.git",
+    "ruff>=0.15.4",
 ]
 
 [project.scripts]
