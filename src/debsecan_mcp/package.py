@@ -76,20 +76,22 @@ class Package:
         )
 
     @classmethod
-    def from_apt_pkg(cls, pkg: apt_pkg.Package) -> "Package":
+    def from_apt_pkg(
+        cls, pkg: apt_pkg.Package, records: apt_pkg.PackageRecords
+    ) -> "Package":
         """Create a Package from an apt_pkg.Package with a current version."""
         ver = pkg.current_ver
         pkg_version = ver.ver_str
         pkg_source = pkg.name
         pkg_source_version = pkg_version
 
-        # Extract source package info from the version record
-        source_field = ver.source_pkg_name
-        if source_field:
-            pkg_source = source_field
-        source_ver_field = ver.source_ver_str
-        if source_ver_field:
-            pkg_source_version = source_ver_field
+        # Look up the package record to extract source package info
+        pf, idx = ver.file_list[0]
+        records.lookup((pf, idx))
+        if records.source_pkg:
+            pkg_source = records.source_pkg
+        if records.source_ver:
+            pkg_source_version = records.source_ver
 
         return cls(
             pkg.name,
@@ -107,10 +109,11 @@ def get_installed_packages() -> list[Package]:
 
     try:
         cache = apt_pkg.Cache(progress=None)
+        records = apt_pkg.PackageRecords(cache)
         for pkg in cache.packages:
             if pkg.current_ver:
                 try:
-                    packages.append(Package.from_apt_pkg(pkg))
+                    packages.append(Package.from_apt_pkg(pkg, records))
                 except ValueError as e:
                     logger.warning("Invalid version for package %s: %s", pkg.name, e)
     except Exception as e:
