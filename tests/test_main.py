@@ -1,4 +1,5 @@
 import os
+import subprocess
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,6 +7,19 @@ import pytest
 
 from debsecan_mcp import main
 from debsecan_mcp.main import detect_suite, list_vulnerabilities, research_cves
+
+
+def is_debsecan_available():
+    try:
+        subprocess.run(["debsecan", "--help"], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+requires_debsecan = pytest.mark.skipif(
+    not is_debsecan_available(), reason="debsecan binary not found"
+)
 
 
 class TestDetectSuite:
@@ -218,3 +232,36 @@ class TestResearchCves:
 
                     assert "CVE-2024-1234" in result
                     assert "CVE-2024-5678" in result
+
+
+class TestDebsecanIntegration:
+    @pytest.mark.asyncio
+    @requires_debsecan
+    async def test_list_vulnerabilities_matches_debsecan(self):
+        result = subprocess.run(
+            ["debsecan", "--suite", "bookworm"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        debsecan_cves = set()
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                cve = line.split()[0]
+                if cve.startswith("CVE-"):
+                    debsecan_cves.add(cve)
+
+        main.epss_data = {}
+        main.vulnerability_feed = await main.vulnerability.fetch_data("bookworm")
+
+        our_result = await list_vulnerabilities(suite="bookworm")
+
+        our_cves = set()
+        for cves in our_result.values():
+            our_cves.update(cves)
+
+        extra_in_ours = our_cves - debsecan_cves
+
+        assert len(extra_in_ours) == 0, (
+            f"Extra CVEs in our output not in debsecan: {extra_in_ours}"
+        )
