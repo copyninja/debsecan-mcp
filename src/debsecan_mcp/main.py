@@ -117,7 +117,7 @@ async def list_vulnerabilities(suite: str | None = None):
     # Format output for the LLM
     output = {}
     for cat, vulns in categorized.items():
-        output[cat] = [v.bug_id for v in vulns]
+        output[cat] = {v.bug_id for v in vulns}
 
     if not output:
         return "No vulnerabilities detected on the system."

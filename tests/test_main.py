@@ -131,7 +131,7 @@ class TestListVulnerabilities:
                     assert isinstance(result, dict)
                     for category in ["critical", "high", "medium", "low", "negligible"]:
                         assert category in result
-                        assert result[category] == []
+                        assert result[category] == set()
 
     @pytest.mark.asyncio
     async def test_list_vulnerabilities_deduplication(
