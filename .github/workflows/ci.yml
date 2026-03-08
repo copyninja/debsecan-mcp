@@ -28,11 +28,13 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Install dependencies
-        run: uv pip install --system pytest pytest-asyncio pytest-mock pytest-cov httpx
+      - name: Install tox
+        run: uv pip install --system tox
 
-      - name: Run tests with coverage
-        run: DEBSECAN_SUITE=bookworm pytest tests/ --cov=src/debsecan_mcp --cov-report=term-missing --cov-report=xml
+      - name: Run tests with tox
+        env:
+          DEBSECAN_SUITE: bookworm
+        run: tox
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
