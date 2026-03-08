@@ -85,6 +85,7 @@ async def list_vulnerabilities(suite: str | None = None):
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
                 # Create a shallow copy to avoid mutating the feed data
                 import copy
+
                 v_copy = copy.copy(v)
                 v_copy.epss_score = epss_info["score"]
                 v_copy.epss_percentile = epss_info["percentile"]
@@ -139,13 +140,20 @@ async def research_cves(cves: list[str]):
 
         # Prioritize vulns affecting installed packages (binary or source)
         # Sort so installed ones come first
-        found_vulns.sort(key=lambda x: x.package in installed_pkg_names or x.package in installed_source_names, reverse=True)
+        found_vulns.sort(
+            key=lambda x: (
+                x.package in installed_pkg_names or x.package in installed_source_names
+            ),
+            reverse=True,
+        )
 
         v = found_vulns[0]
         epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
         percentile_str = f"{epss_info['percentile'] * 100:.2f}%"
 
-        is_installed = v.package in installed_pkg_names or v.package in installed_source_names
+        is_installed = (
+            v.package in installed_pkg_names or v.package in installed_source_names
+        )
         status_str = " (INSTALLED)" if is_installed else ""
 
         res = (
