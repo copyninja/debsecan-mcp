@@ -1,6 +1,31 @@
+import argparse
 import asyncio
 import logging
 import os
+import sys
+
+
+def _configure_mcp_settings():
+    """Configure MCP server settings from args BEFORE importing FastMCP."""
+    args = sys.argv[1:]
+
+    # Parse args early to get transport settings
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--transport", default="stdio")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--mount-path", default="/mcp")
+    parsed, _ = parser.parse_known_args(args)
+
+    # Set FastMCP settings via environment variables before importing FastMCP
+    if parsed.transport != "stdio":
+        os.environ["FASTMCP_HOST"] = parsed.host
+        os.environ["FASTMCP_PORT"] = str(parsed.port)
+
+    return parsed
+
+
+_cli_args = _configure_mcp_settings()
 
 from mcp.server.fastmcp import FastMCP
 
@@ -10,8 +35,12 @@ from . import epss, package, vulnerability
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("debsecan-mcp")
 
-# Initialize FastMCP
-mcp = FastMCP("DebSecCan")
+# Initialize FastMCP with host/port from CLI args
+mcp = FastMCP(
+    "DebSecCan",
+    host=_cli_args.host,
+    port=_cli_args.port,
+)
 
 # Global data stores
 epss_data = {}
@@ -214,7 +243,31 @@ async def initialize():
 
 
 def main():
-    # Run initialization before starting the server
+    parser = argparse.ArgumentParser(description="DebSecCan MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help="Transport mode (default: stdio)",
+    )
+    parser.add_argument(
+        "--mount-path",
+        default="/mcp",
+        help="Mount path for HTTP transports (default: /mcp)",
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind to for HTTP transport (default: 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind to for HTTP transport (default: 8000)",
+    )
+    args = parser.parse_args()
+
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(initialize())
@@ -222,8 +275,21 @@ def main():
         logger.critical("Server failed to initialize and will not start: %s", e)
         return
 
-    # Start FastMCP server
-    mcp.run()
+    if args.transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        # Set MCP server settings via environment variables
+        os.environ["FASTMCP_HOST"] = args.host
+        os.environ["FASTMCP_PORT"] = str(args.port)
+
+        logger.info(
+            f"Starting {args.transport} server on {args.host}:{args.port}{args.mount_path}"
+        )
+
+        if args.transport == "sse":
+            mcp.run(transport="sse", mount_path=args.mount_path)
+        else:
+            mcp.run(transport="streamable-http", mount_path=args.mount_path)
 
 
 if __name__ == "__main__":

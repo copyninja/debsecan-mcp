@@ -39,6 +39,61 @@ Or with a specific Debian suite:
 DEBSECAN_SUITE=bookworm debsecan-mcp
 ```
 
+### Command Line Options
+
+```bash
+debsecan-mcp --help
+```
+
+Options:
+- `--transport {stdio,sse,streamable-http}` - Transport mode (default: stdio)
+- `--mount-path PATH` - Mount path for HTTP transports (default: /mcp)
+- `--host HOST` - Host to bind to for HTTP transport (default: 0.0.0.0)
+- `--port PORT` - Port to bind to for HTTP transport (default: 8000)
+
+### Transport Modes
+
+#### STDIO Mode (Default)
+
+Used for direct integration with AI assistants like Claude Desktop or VSCode.
+
+```bash
+debsecan-mcp --transport stdio
+```
+
+#### HTTP Modes
+
+For HTTP-based access, use `sse` or `streamable-http`:
+
+```bash
+# SSE mode
+debsecan-mcp --transport sse --port 8080 --mount-path /mcp
+
+# Streamable HTTP mode
+debsecan-mcp --transport streamable-http --port 8080 --mount-path /mcp
+```
+
+Note: HTTP modes require running behind a web server. See [HTTP Server Setup](#http-server-setup) below.
+
+### HTTP Server Setup
+
+The HTTP transport modes need to be served by a WSGI/ASGI server. Example with uvicorn:
+
+```bash
+# Install uvicorn
+pip install uvicorn
+
+# Run with stdio transport and wrap with uvicorn
+uvicorn debsecan_mcp.main:mcp_app --app-dir src --host 0.0.0.0 --port 8000 --path /mcp
+```
+
+Or use the built-in development server:
+
+```bash
+# SSE mode
+debsecan-mcp --transport sse --host 0.0.0.0 --port 8000 --mount-path /mcp
+```
+
 ### Available Tools
 
 #### `list_vulnerabilities`
@@ -84,6 +139,48 @@ To use this MCP server with VSCode and AI assistants:
 3. Replace `bookworm` with your Debian suite codename (e.g., `trixie`, `sid`, `GENERIC`)
 
 4. Restart VSCode or reload the window
+
+## Adding to opencode
+
+### Option 1: STDIO Mode (Default)
+
+For local usage with opencode, use the default stdio transport:
+
+```json
+{
+  "mcpServers": {
+    "debsecan": {
+      "command": "debsecan-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "DEBSECAN_SUITE": "bookworm"
+      }
+    }
+  }
+}
+```
+
+### Option 2: HTTP Mode
+
+For remote or containerized setups, you can run the MCP server over HTTP:
+
+1. Start the server:
+```bash
+debsecan-mcp --transport streamable-http --port 8080 --mount-path /mcp
+```
+
+2. Configure opencode to connect via HTTP:
+```json
+{
+  "mcpServers": {
+    "debsecan": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+Note: HTTP mode requires the MCP client to support HTTP transport.
 
 
 ## How It Works
