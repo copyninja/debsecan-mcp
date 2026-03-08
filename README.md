@@ -1,5 +1,9 @@
 # debsecan-mcp
 
+[![Tests](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/copyninja/debsecan-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/copyninja/debsecan-mcp)
+[![Built with opencode](https://img.shields.io/badge/Built%20with-opencode-5B4BFF.svg)](https://opencode.ai)
+
 A Model Context Protocol (MCP) server for Debian security vulnerability
 analysis. This server integrates with AI assistants (like Claude) to provide
 vulnerability scanning capabilities for Debian systems.
