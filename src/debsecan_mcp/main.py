@@ -4,43 +4,26 @@ import logging
 import os
 import sys
 
-
-def _configure_mcp_settings():
-    """Configure MCP server settings from args BEFORE importing FastMCP."""
-    args = sys.argv[1:]
-
-    # Parse args early to get transport settings
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--transport", default="stdio")
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--mount-path", default="/mcp")
-    parsed, _ = parser.parse_known_args(args)
-
-    # Set FastMCP settings via environment variables before importing FastMCP
-    if parsed.transport != "stdio":
-        os.environ["FASTMCP_HOST"] = parsed.host
-        os.environ["FASTMCP_PORT"] = str(parsed.port)
-
-    return parsed
-
-
-_cli_args = _configure_mcp_settings()
-
 from mcp.server.fastmcp import FastMCP
 
 from . import epss, package, vulnerability
 
+
+def create_mcp(transport: str, host: str, port: int, mount_path: str) -> FastMCP:
+    """Create FastMCP instance based on transport type."""
+    if transport == "stdio":
+        return FastMCP("DebSecCan")
+    elif transport == "sse":
+        return FastMCP("DebSecCan", host=host, port=port, sse_path=mount_path)
+    else:
+        return FastMCP(
+            "DebSecCan", host=host, port=port, streamable_http_path=mount_path
+        )
+
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("debsecan-mcp")
-
-# Initialize FastMCP with host/port from CLI args
-mcp = FastMCP(
-    "DebSecCan",
-    host=_cli_args.host,
-    port=_cli_args.port,
-)
 
 # Global data stores
 epss_data = {}
@@ -85,7 +68,7 @@ def detect_suite() -> str:
     return suite
 
 
-@mcp.tool()
+
 async def list_vulnerabilities(suite: str | None = None):
     """
     Lists all vulnerabilities affecting the currently installed packages on the system.
@@ -142,7 +125,6 @@ async def list_vulnerabilities(suite: str | None = None):
     return output
 
 
-@mcp.tool()
 async def research_cves(cves: list[str]):
     """
     Provides detailed information for a list of CVE IDs.
@@ -243,6 +225,10 @@ async def initialize():
 
 
 def main():
+    # Setup logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("debsecan-mcp")
+
     parser = argparse.ArgumentParser(description="DebSecCan MCP Server")
     parser.add_argument(
         "--transport",
@@ -266,7 +252,12 @@ def main():
         default=8000,
         help="Port to bind to for HTTP transport (default: 8000)",
     )
-    args = parser.parse_args()
+    parsed = parser.parse_args()
+    mcp = create_mcp(parsed.transport, parsed.host, parsed.port, parsed.mount_path)
+
+    # Add the tools
+    mcp.add_tool(list_vulnerabilities)
+    mcp.add_tool(research_cves)
 
     loop = asyncio.get_event_loop()
     try:
@@ -275,21 +266,16 @@ def main():
         logger.critical("Server failed to initialize and will not start: %s", e)
         return
 
-    if args.transport == "stdio":
+    logger.info(
+        f"Starting {parsed.transport} server on {parsed.host}:{parsed.port}{parsed.mount_path}"
+    )
+
+    if parsed.transport == "stdio":
         mcp.run(transport="stdio")
+    elif parsed.transport == "sse":
+        mcp.run(transport="sse")
     else:
-        # Set MCP server settings via environment variables
-        os.environ["FASTMCP_HOST"] = args.host
-        os.environ["FASTMCP_PORT"] = str(args.port)
-
-        logger.info(
-            f"Starting {args.transport} server on {args.host}:{args.port}{args.mount_path}"
-        )
-
-        if args.transport == "sse":
-            mcp.run(transport="sse", mount_path=args.mount_path)
-        else:
-            mcp.run(transport="streamable-http", mount_path=args.mount_path)
+        mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":
