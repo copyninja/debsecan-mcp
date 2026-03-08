@@ -36,6 +36,9 @@ jobs:
           DEBSECAN_SUITE: bookworm
         run: tox
 
+      - name: Install dependency for codecov
+        run: apt-get install -y curl gpg
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
