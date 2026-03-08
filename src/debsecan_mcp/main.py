@@ -68,7 +68,6 @@ def detect_suite() -> str:
     return suite
 
 
-
 async def list_vulnerabilities(suite: str | None = None):
     """
     Lists all vulnerabilities affecting the currently installed packages on the system.
