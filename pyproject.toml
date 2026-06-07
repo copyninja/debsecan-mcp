@@ -23,6 +23,7 @@ test = [
 
 [project.scripts]
 debsecan-mcp = "debsecan_mcp.main:main"
+debvulns = "debsecan_mcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]
