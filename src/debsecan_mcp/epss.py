@@ -12,7 +12,8 @@ EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 
 async def download_epss() -> dict[str, dict[str, float]]:
     """
-    Downloads the latest EPSS data and returns a map of CVE to EPSS score and percentile.
+    Downloads the latest EPSS data and returns a map of CVE to EPSS score
+    and percentile.
     """
     logger.info("Downloading EPSS data from %s", EPSS_URL)
     async with httpx.AsyncClient(follow_redirects=True) as client:

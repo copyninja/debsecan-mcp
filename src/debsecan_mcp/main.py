@@ -1,8 +1,8 @@
 import argparse
 import asyncio
+import copy
 import logging
 import os
-import sys
 
 from mcp.server.fastmcp import FastMCP
 
@@ -26,9 +26,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("debsecan-mcp")
 
 # Global data stores
-epss_data = {}
-installed_packages = []
-vulnerability_feed = {}
+epss_data: dict[str, dict[str, float]] = {}
+installed_packages: list[package.Package] = []
+vulnerability_feed: dict[str, list[vulnerability.Vulnerability]] = {}
 
 
 def detect_suite() -> str:
@@ -62,7 +62,8 @@ def detect_suite() -> str:
 
     if not suite:
         raise RuntimeError(
-            "Debian suite could not be detected. Please set DEBSECAN_SUITE environment variable."
+            "Debian suite could not be detected. "
+            "Please set DEBSECAN_SUITE environment variable."
         )
 
     return suite
@@ -95,8 +96,6 @@ async def list_vulnerabilities(suite: str | None = None):
                 # Enrich with EPSS score and percentile
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
                 # Create a shallow copy to avoid mutating the feed data
-                import copy
-
                 v_copy = copy.copy(v)
                 v_copy.epss_score = epss_info["score"]
                 v_copy.epss_percentile = epss_info["percentile"]
@@ -266,7 +265,8 @@ def main():
         return
 
     logger.info(
-        f"Starting {parsed.transport} server on {parsed.host}:{parsed.port}{parsed.mount_path}"
+        f"Starting {parsed.transport} server on "
+        f"{parsed.host}:{parsed.port}{parsed.mount_path}"
     )
 
     if parsed.transport == "stdio":
