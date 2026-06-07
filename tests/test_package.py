@@ -108,3 +108,48 @@ class TestGetInstalledPackages:
         assert isinstance(packages, list)
         assert len(packages) == 1
         assert packages[0].name == "testpkg"
+
+    def test_version_comparison_fallback_native(self, mocker):
+        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
+        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+
+        # Test comparison using NativeVersion
+        v1 = Version("1.0.0-1")
+        v2 = Version("1.0.0-2")
+        assert v1 < v2
+        assert v2 > v1
+        assert v1 == Version("1.0.0-1")
+
+    def test_get_installed_packages_fallback_dpkg_query(self, mocker):
+        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
+        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+        mocker.patch("shutil.which", return_value=True)
+
+        mock_stdout = "installed\tcurl\t8.5.0-1\tcurl\t8.5.0-1\ninstalled\tlibc6\t2.36-9+deb12u7\tglibc\t2.36-9\n"
+        mock_run = MagicMock()
+        mock_run.stdout = mock_stdout
+        mocker.patch("subprocess.run", return_value=mock_run)
+
+        packages = get_installed_packages()
+        assert isinstance(packages, list)
+        assert len(packages) == 2
+
+        assert packages[0].name == "curl"
+        assert str(packages[0].version) == "8.5.0-1"
+        assert packages[0].source == "curl"
+        assert str(packages[0].source_version) == "8.5.0-1"
+
+        assert packages[1].name == "libc6"
+        assert str(packages[1].version) == "2.36-9+deb12u7"
+        assert packages[1].source == "glibc"
+        assert str(packages[1].source_version) == "2.36-9"
+
+    def test_get_installed_packages_all_failed(self, mocker):
+        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
+        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+        mocker.patch("shutil.which", return_value=False)
+
+        packages = get_installed_packages()
+        assert isinstance(packages, list)
+        assert len(packages) == 0
+

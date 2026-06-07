@@ -12,7 +12,8 @@ EPSS_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 
 async def download_epss(url: str | None = None) -> dict[str, dict[str, float]]:
     """
-    Downloads latest EPSS data and returns map of CVE to EPSS score/percentile.
+    Downloads the latest EPSS data and returns a map of CVE to EPSS score
+    and percentile.
     """
     if not url:
         url = EPSS_URL

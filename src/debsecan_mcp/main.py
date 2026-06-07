@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import copy
 import logging
 import os
 
@@ -95,8 +96,6 @@ async def list_vulnerabilities(suite: str | None = None):
                 # Enrich with EPSS score and percentile
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
                 # Create a shallow copy to avoid mutating the feed data
-                import copy
-
                 v_copy = copy.copy(v)
                 v_copy.epss_score = epss_info["score"]
                 v_copy.epss_percentile = epss_info["percentile"]
