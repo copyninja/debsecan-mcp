@@ -94,6 +94,47 @@ Or use the built-in development server:
 debsecan-mcp --transport sse --host 0.0.0.0 --port 8000 --mount-path /mcp
 ```
 
+### Standalone CLI Tool (`debvulns`)
+
+The package includes a standalone CLI tool `debvulns` that allows you to scan for vulnerabilities directly from the command line without running the MCP server.
+
+On first run, `debvulns` downloads the vulnerabilities and EPSS data and caches them locally (defaulting to `/var/cache/debvulns` or falling back to `~/.cache/debvulns` if the default path is unwritable). The cache is refreshed automatically if it is older than 24 hours.
+
+#### Running the CLI Tool
+
+```bash
+debvulns
+```
+
+#### Command Line Options
+
+```bash
+debvulns --help
+```
+
+Options:
+- `-s, --severity {critical,high,medium,low,negligible}` - Filter vulnerabilities by severity. By default, lists all vulnerabilities grouped by severity.
+- `-f, --format {json,csv}` - Output format (default: `json`).
+- `--sort-by {package,cve}` - Sort vulnerabilities by package name or CVE ID.
+- `--suite SUITE` - Debian suite name (e.g., `bookworm`, `sid`). Automatically detected by default.
+- `--cache-dir PATH` - Directory to cache fetched and parsed data (default: `/var/cache/debvulns`).
+- `--no-cache` - Do not use cached data, force downloading and parsing.
+- `--vuln-url URL` - Custom URL or local path for Debian Security Tracker data.
+- `--epss-url URL` - Custom URL or local path for EPSS scores data.
+- `-v, --verbose` - Enable verbose debug logging (sent to stderr).
+
+#### Examples
+
+**Filter high severity vulnerabilities, sort by CVE, and output in CSV format:**
+```bash
+debvulns --severity high --sort-by cve --format csv
+```
+
+**Run for a specific suite without using cached data:**
+```bash
+debvulns --suite trixie --no-cache
+```
+
 ### Available Tools
 
 #### `list_vulnerabilities`
