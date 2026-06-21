@@ -1,9 +1,12 @@
+import contextlib
 import csv
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
+from io import StringIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +14,8 @@ import pytest
 from debsecan_mcp import cli
 from debsecan_mcp.package import Package, Version
 from debsecan_mcp.vulnerability import Vulnerability
+from tests.conftest import requires_debian, requires_debsecan
+
 
 
 @pytest.fixture
@@ -330,3 +335,112 @@ async def test_async_main_sorting(
     high_vulns = output_data["high"]
     assert high_vulns[0]["cve"] == "CVE-2024-1234"
     assert high_vulns[1]["cve"] == "CVE-2024-5678"
+
+
+class TestDebsecanIntegration:
+    @pytest.mark.asyncio
+    @requires_debsecan
+    @requires_debian
+    async def test_debvulns_cves_are_subset_of_debsecan(self):
+        """
+        Validates that every CVE/TEMP ID reported by debvulns CLI is also known
+        to the debsecan binary on the same system.
+
+        Comparison strategy — unique vulnerability IDs (not package pairs):
+        ---------------------------------------------------------------
+        debsecan outputs one line per (ID, package) combination, e.g.:
+            CVE-2024-1234 bash [flags]
+            TEMP-0000000-3CAD20 somepackage [flags]
+
+        We extract the *unique set of vulnerability IDs* from debsecan and
+        compare that against the unique set of IDs in debvulns JSON output.
+        IDs include both CVE-* and TEMP-* identifiers.
+
+        Why not (ID, package) pairs?
+        - debsecan's internal is_vulnerable() logic can differ from ours
+          at the package-name matching level (binary vs source), producing
+          thousands of false negatives that are expected and acceptable.
+        - Comparing just vulnerability IDs answers the real question:
+          "Does debvulns ever invent an ID that debsecan doesn't know about?"
+
+        Assertion (one direction only):
+            debvulns_ids ⊆ debsecan_ids
+
+        i.e. debvulns must not report an ID absent from debsecan.
+        The reverse (debsecan reporting more IDs than debvulns) is expected:
+        debsecan includes low/negligible/no-urgency entries and uses its own
+        version-matching logic, while debvulns fetches the Debian Security
+        Tracker feed and applies our is_vulnerable() version comparisons.
+
+        This test is skipped automatically on non-Debian systems and when the
+        debsecan binary is not installed (e.g. GitHub CI). It runs locally.
+        """
+        # 1. Run debsecan and collect unique CVE IDs
+        try:
+            result = subprocess.run(
+                ["debsecan"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.skip("debsecan timed out waiting for network")
+
+        debsecan_ids: set[str] = set()
+        for line in result.stdout.strip().splitlines():
+            if not line:
+                continue
+            parts = line.split()
+            # debsecan output format: <ID> package_name [flags...]
+            # ID can be CVE-XXXX-XXXXX or TEMP-XXXXXXX-XXXXXX
+            if parts and (parts[0].startswith("CVE-") or parts[0].startswith("TEMP-")):
+                debsecan_ids.add(parts[0])
+
+        if not debsecan_ids:
+            pytest.skip("debsecan returned no vulnerabilities — nothing to compare")
+
+        # 2. Run debvulns CLI with --no-cache and JSON output (all severities)
+        stdout_capture = StringIO()
+        with patch("sys.argv", ["debvulns", "--no-cache", "-f", "json"]):
+            with contextlib.redirect_stdout(stdout_capture):
+                await cli.async_main()
+
+        output_data = json.loads(stdout_capture.getvalue())
+
+        # 3. Collect unique vulnerability IDs from debvulns output
+        #    JSON structure: {severity: [{cve: "CVE-...", package: "...", ...}, ...]}
+        #    The "cve" field may contain CVE-* or TEMP-* identifiers.
+        debvulns_ids: set[str] = set()
+        for sev_vulns in output_data.values():
+            for v in sev_vulns:
+                debvulns_ids.add(v["cve"])
+
+        # 4. Print a count summary (visible with pytest -s)
+        print(
+            f"\n[debsecan vs debvulns] "
+            f"debsecan unique IDs: {len(debsecan_ids)}, "
+            f"debvulns unique IDs: {len(debvulns_ids)}",
+            file=sys.stderr,
+        )
+
+        # 5. Assert debvulns ⊆ debsecan — no invented IDs
+        extra_in_debvulns = debvulns_ids - debsecan_ids
+        assert len(extra_in_debvulns) == 0, (
+            f"debvulns reported {len(extra_in_debvulns)} ID(s) "
+            f"not found in debsecan output (possible false positives):\n"
+            + "\n".join(f"  {vid}" for vid in sorted(extra_in_debvulns))
+        )
+
+        # 6. Informational: IDs debsecan knows about that debvulns didn't report.
+        #    This is expected — debsecan includes low/negligible/unurgent entries
+        #    that our version-comparison logic may resolve differently.
+        missing_in_debvulns = debsecan_ids - debvulns_ids
+        if missing_in_debvulns:
+            print(
+                f"[debsecan vs debvulns] "
+                f"{len(missing_in_debvulns)} ID(s) in debsecan not reported by debvulns "
+                f"(expected — urgency/version-match differences)",
+                file=sys.stderr,
+            )
+
