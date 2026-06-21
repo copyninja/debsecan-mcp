@@ -7,25 +7,7 @@ import pytest
 
 from debsecan_mcp import main
 from debsecan_mcp.main import detect_suite, list_vulnerabilities, research_cves
-
-
-def is_debsecan_available():
-    try:
-        subprocess.run(
-            ["debsecan", "--help"], capture_output=True, check=True, timeout=2
-        )
-        return True
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired,
-    ):
-        return False
-
-
-requires_debsecan = pytest.mark.skipif(
-    not is_debsecan_available(), reason="debsecan binary not found"
-)
+from tests.conftest import requires_debsecan
 
 
 class TestDetectSuite:
@@ -255,7 +237,6 @@ class TestResearchCves:
 class TestDebsecanIntegration:
     @pytest.mark.asyncio
     @requires_debsecan
-    @pytest.mark.skip(reason="Integration test hangs randomly due to network")
     async def test_list_vulnerabilities_matches_debsecan(self):
         try:
             result = subprocess.run(

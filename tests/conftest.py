@@ -1,5 +1,6 @@
 import os
 import platform
+import subprocess
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
@@ -17,6 +18,25 @@ def is_debian():
 
 requires_debian = pytest.mark.skipif(
     not is_debian(), reason="Test requires a Debian-based system"
+)
+
+
+def is_debsecan_available():
+    try:
+        subprocess.run(
+            ["debsecan", "--help"], capture_output=True, check=True, timeout=2
+        )
+        return True
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
+        return False
+
+
+requires_debsecan = pytest.mark.skipif(
+    not is_debsecan_available(), reason="debsecan binary not found"
 )
 
 
