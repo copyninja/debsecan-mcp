@@ -177,15 +177,23 @@ general alerting.
 
 ---
 
-### 3. Detailed Vulnerability Metrics (High Cardinality)
+### 3. Per-Vulnerability Metrics
 
-These metrics provide fine-grained information per vulnerability and package.
+These metrics provide fine-grained information per vulnerability and package. To keep
+cardinality manageable and avoid churn, the data is **split across three metrics** that
+can be joined in PromQL on the natural key `(cve, package)` or `package`.
 
 > [!NOTE]
-> While Prometheus generally discourages high-cardinality labels, the number of open
-> vulnerabilities on a single host is typically small (fewer than 100). Thus, exposing CVE
-> and package names in labels is standard practice for vulnerability exporters and enables
-> precise per-CVE alerting and querying.
+> **Why split?** On a `sid`/unstable suite, the `(cve, package)` cardinality can reach
+> 10 000+ time series. Embedding `installed_version` and `fix_version` as labels on every
+> series multiplies memory use and causes constant churn on package upgrades (retired series
+> + new series every time a package version changes). Splitting isolates those high-entropy,
+> high-churn labels into purpose-specific metrics so that the core alerting metric remains
+> stable and cheap.
+>
+> **Joining in PromQL** uses `* on(<key>) group_left(<label>)` — the standard Prometheus
+> info-metric join pattern. See the [Sample Output](#sample-prometheus-exposition-output)
+> section for worked examples.
 
 #### `debsecan_vulnerability_info`
 
@@ -194,22 +202,70 @@ These metrics provide fine-grained information per vulnerability and package.
 * **Labels**:
   * `cve`: CVE identifier (e.g., `CVE-2023-38408`).
   * `package`: Name of the vulnerable installed package (e.g., `openssh-client`).
-  * `installed_version`: The currently installed version of the package.
   * `urgency`: The **raw** debsecan urgency string (`high`, `medium`, `low`, or empty string
     for unspecified).
   * `severity`: The **derived** severity category (`critical`, `high`, `medium`, `low`,
     `negligible`) from `categorise_vulnerabilities()`.
   * `fix_available`: Whether a fix is available (`true` or `false`).
-  * `fix_version`: The version that fixes the vulnerability, taken from `unstable_version`
-    or `other_versions`. Empty string `""` if no fix version is known.
   * `remote`: Whether the vulnerability is remotely exploitable (`true`, `false`, or
     `unknown`). `unknown` corresponds to the `?` flag in the debsecan data.
-* **Description**: Detailed information for each active vulnerability detected on the host.
-  Deduplicated on `(cve, package)`.
+* **Description**: Core fact metric — one series per active `(cve, package)` pair detected
+  on the host. Used as the primary join key and the basis for all alerting expressions.
+  Version information is available via `debsecan_package_info` and
+  `debsecan_vulnerability_fix_info`.
 
 > [!NOTE]
-> The `fix_version` label surfaces the actionable remediation version directly in the metric,
-> avoiding the need to cross-reference an external source to know what to upgrade to.
+> `installed_version` and `fix_version` are intentionally absent from this metric. Both
+> are high-entropy strings that drive TSDB churn on every package upgrade. They are exposed
+> separately (see below) so that operators who do not need them in Prometheus can simply
+> omit those metrics from their scrape `metric_relabel_configs`.
+
+---
+
+#### `debsecan_package_info`
+
+* **Type**: Gauge
+* **Value**: Always `1`
+* **Labels**:
+  * `package`: Name of the installed package (e.g., `openssh-client`).
+  * `installed_version`: The currently installed version of the package
+    (e.g., `1:9.2p1-2+deb12u1`).
+* **Description**: Installed version for each Debian package that has at least one active
+  vulnerability. One series per **unique package** (not per CVE), so cardinality is bounded
+  by the number of vulnerable packages (~tens to hundreds) rather than the number of CVEs.
+  Join onto `debsecan_vulnerability_info` on `package` to retrieve the installed version for
+  alert annotations or dashboards.
+
+> [!NOTE]
+> Storing `installed_version` here rather than on `debsecan_vulnerability_info` means a
+> package with 50 active CVEs contributes just **1** version-label series instead of 50.
+> Churn (on package upgrade) is isolated to this metric only.
+
+---
+
+#### `debsecan_vulnerability_fix_info`
+
+* **Type**: Gauge
+* **Value**: Always `1`
+* **Labels**:
+  * `cve`: CVE identifier.
+  * `package`: Name of the vulnerable installed package.
+  * `fix_version`: The version that fixes this vulnerability, taken from `unstable_version`
+    or `other_versions`. Empty string `""` if no fixed version is known.
+* **Description**: Remediation version for each active `(cve, package)` pair. Kept as a
+  separate metric so operators who need fix versions in dashboards can join it in, while
+  those who do not can drop it via `metric_relabel_configs` without affecting the core
+  alerting metric.
+
+> [!NOTE]
+> **Joining fix version into an alert**:
+> ```promql
+> debsecan_vulnerability_info{severity="critical", fix_available="true"}
+>   * on(cve, package) group_left(fix_version)
+>   debsecan_vulnerability_fix_info
+> ```
+
+---
 
 #### `debsecan_vulnerability_epss_score`
 
@@ -239,13 +295,14 @@ These metrics provide fine-grained information per vulnerability and package.
 
 ## Label Value Reference
 
-| Label           | Possible Values                                   | Notes                                           |
-|-----------------|---------------------------------------------------|-------------------------------------------------|
-| `severity`      | `critical`, `high`, `medium`, `low`, `negligible` | Derived by `categorise_vulnerabilities()`       |
-| `urgency`       | `high`, `medium`, `low`, `""`                     | Raw debsecan flag value                         |
-| `remote`        | `true`, `false`, `unknown`                        | `unknown` maps to the `?` flag in debsecan data |
-| `fix_available` | `true`, `false`                                   | Directly from debsecan `F` flag                 |
-| `fix_version`   | version string or `""`                            | Empty when no fixed version is known            |
+| Label               | Metric(s)                                                           | Possible Values                                   | Notes                                           |
+|---------------------|---------------------------------------------------------------------|---------------------------------------------------|-------------------------------------------------|
+| `severity`          | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `critical`, `high`, `medium`, `low`, `negligible` | Derived by `categorise_vulnerabilities()`       |
+| `urgency`           | `debsecan_vulnerability_info`                                       | `high`, `medium`, `low`, `""`                     | Raw debsecan flag value                         |
+| `remote`            | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `true`, `false`, `unknown`                        | `unknown` maps to the `?` flag in debsecan data |
+| `fix_available`     | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `true`, `false`                                   | Directly from debsecan `F` flag                 |
+| `installed_version` | `debsecan_package_info`                                             | version string                                    | One series per package, not per CVE             |
+| `fix_version`       | `debsecan_vulnerability_fix_info`                                   | version string or `""`                            | Empty when no fixed version is known            |
 
 ---
 
@@ -281,11 +338,23 @@ debsecan_vulnerabilities_total{fix_available="false",remote="true",severity="hig
 debsecan_vulnerabilities_total{fix_available="true",remote="false",severity="medium"} 4
 debsecan_vulnerabilities_total{fix_available="true",remote="false",severity="low"} 12
 
-# HELP debsecan_vulnerability_info Detailed information for each active vulnerability detected on the host.
+# HELP debsecan_vulnerability_info Core fact metric — one series per active (cve, package) pair.
 # TYPE debsecan_vulnerability_info gauge
-debsecan_vulnerability_info{cve="CVE-2023-38408",fix_available="true",fix_version="1:9.3p1-1",installed_version="1:9.2p1-2+deb12u1",package="openssh-client",remote="true",severity="critical",urgency="high"} 1
-debsecan_vulnerability_info{cve="CVE-2023-4806",fix_available="false",fix_version="",installed_version="2.36-9+deb12u3",package="libc6",remote="true",severity="high",urgency="high"} 1
-debsecan_vulnerability_info{cve="CVE-2024-1234",fix_available="false",fix_version="",installed_version="1.2.3-1",package="libfoo1",remote="unknown",severity="medium",urgency="medium"} 1
+debsecan_vulnerability_info{cve="CVE-2023-38408",fix_available="true",package="openssh-client",remote="true",severity="critical",urgency="high"} 1
+debsecan_vulnerability_info{cve="CVE-2023-4806",fix_available="false",package="libc6",remote="true",severity="high",urgency="high"} 1
+debsecan_vulnerability_info{cve="CVE-2024-1234",fix_available="false",package="libfoo1",remote="unknown",severity="medium",urgency="medium"} 1
+
+# HELP debsecan_package_info Installed version for each vulnerable package (one series per package).
+# TYPE debsecan_package_info gauge
+debsecan_package_info{installed_version="1:9.2p1-2+deb12u1",package="openssh-client"} 1
+debsecan_package_info{installed_version="2.36-9+deb12u3",package="libc6"} 1
+debsecan_package_info{installed_version="1.2.3-1",package="libfoo1"} 1
+
+# HELP debsecan_vulnerability_fix_info Fix version for each active (cve, package) pair.
+# TYPE debsecan_vulnerability_fix_info gauge
+debsecan_vulnerability_fix_info{cve="CVE-2023-38408",fix_version="1:9.3p1-1",package="openssh-client"} 1
+debsecan_vulnerability_fix_info{cve="CVE-2023-4806",fix_version="",package="libc6"} 1
+debsecan_vulnerability_fix_info{cve="CVE-2024-1234",fix_version="",package="libfoo1"} 1
 
 # HELP debsecan_vulnerability_epss_score The EPSS probability score for the detected vulnerability.
 # TYPE debsecan_vulnerability_epss_score gauge
@@ -298,6 +367,31 @@ debsecan_vulnerability_epss_score{cve="CVE-2024-1234",package="libfoo1"} 0.0312
 debsecan_vulnerability_epss_percentile{cve="CVE-2023-38408",package="openssh-client"} 0.9884
 debsecan_vulnerability_epss_percentile{cve="CVE-2023-4806",package="libc6"} 0.4567
 debsecan_vulnerability_epss_percentile{cve="CVE-2024-1234",package="libfoo1"} 0.1102
+```
+
+### PromQL Join Examples
+
+Joining installed version onto a vulnerability query:
+```promql
+debsecan_vulnerability_info{severity="critical"}
+  * on(package) group_left(installed_version)
+  debsecan_package_info
+```
+
+Joining fix version for remediation dashboards:
+```promql
+debsecan_vulnerability_info{fix_available="true"}
+  * on(cve, package) group_left(fix_version)
+  debsecan_vulnerability_fix_info
+```
+
+Full enrichment — all context in one result (e.g., for a Grafana table panel):
+```promql
+debsecan_vulnerability_info{severity=~"critical|high"}
+  * on(package) group_left(installed_version)
+  debsecan_package_info
+  * on(cve, package) group_left(fix_version)
+  debsecan_vulnerability_fix_info
 ```
 
 ---
@@ -330,11 +424,15 @@ groups:
 ### 2. Alert on High EPSS Score Vulnerability
 
 Fires when a vulnerability has an EPSS score > 0.70, indicating active or imminent
-exploitation in the wild.
+exploitation in the wild. The join with `debsecan_vulnerability_info` enriches the alert
+with `severity` for routing rules.
 
 ```yaml
       - alert: DebsecanHighEpssScoreVulnerability
-        expr: debsecan_vulnerability_epss_score > 0.70
+        expr: >
+          debsecan_vulnerability_epss_score > 0.70
+            * on(cve, package) group_left(severity)
+            debsecan_vulnerability_info
         for: 1m
         labels:
           severity: warning
