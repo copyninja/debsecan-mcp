@@ -1,0 +1,36 @@
+[Unit]
+Description=Debsecan Prometheus Exporter
+Documentation=https://github.com/copyninja/debsecan-mcp
+# Wait for the network stack to be fully up before starting.
+# The exporter's internal exponential backoff handles transient
+# failures that may still occur after the network is reported ready.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/debsecan-exporter \
+    --port 9222 \
+    --refresh-interval 86400 \
+    --cache-dir /var/cache/debsecan-exporter
+Restart=on-failure
+RestartSec=30s
+User=debsecan
+Group=debsecan
+
+# ---- Security hardening ----
+NoNewPrivileges=true
+PrivateTmp=true
+# Allow reading system files but nothing writeable system-wide.
+# ReadWritePaths carves out the one directory we actually need.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/cache/debsecan-exporter
+
+# ---- Logging ----
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=debsecan-exporter
+
+[Install]
+WantedBy=multi-user.target

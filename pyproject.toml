@@ -11,6 +11,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "python-debian>=0.1.49",
     "ruff>=0.15.4",
+    "prometheus-client>=0.20.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,7 @@ test = [
 [project.scripts]
 debsecan-mcp = "debsecan_mcp.main:main"
 debvulns = "debsecan_mcp.cli:main"
+debsecan-exporter = "debsecan_mcp.exporter_cli:main"
 
 [build-system]
 requires = ["hatchling"]
