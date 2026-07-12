@@ -1,3 +1,10 @@
+> [!WARNING]
+> **This package has been renamed to [`debvulns`](https://pypi.org/project/debvulns/).**
+> `debsecan-mcp 0.1.5` is the final release under this name. Please update your dependency:
+> ```
+> pip install debvulns
+> ```
+
 # debsecan-mcp
 
 [![Tests](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml)
