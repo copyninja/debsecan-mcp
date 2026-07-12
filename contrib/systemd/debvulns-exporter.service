@@ -1,5 +1,5 @@
 [Unit]
-Description=Debsecan Prometheus Exporter
+Description=Debvulns Prometheus Exporter
 Documentation=https://github.com/copyninja/debsecan-mcp
 # Wait for the network stack to be fully up before starting.
 # The exporter's internal exponential backoff handles transient
@@ -9,14 +9,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/debsecan-exporter \
+ExecStart=/usr/local/bin/debvulns-exporter \
     --port 9222 \
     --refresh-interval 86400 \
-    --cache-dir /var/cache/debsecan-exporter
+    --cache-dir /var/cache/debvulns-exporter
 Restart=on-failure
 RestartSec=30s
-User=debsecan
-Group=debsecan
+User=debvulns
+Group=debvulns
 
 # ---- Security hardening ----
 NoNewPrivileges=true
@@ -25,12 +25,12 @@ PrivateTmp=true
 # ReadWritePaths carves out the one directory we actually need.
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/cache/debsecan-exporter
+ReadWritePaths=/var/cache/debvulns-exporter
 
 # ---- Logging ----
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=debsecan-exporter
+SyslogIdentifier=debvulns-exporter
 
 [Install]
 WantedBy=multi-user.target

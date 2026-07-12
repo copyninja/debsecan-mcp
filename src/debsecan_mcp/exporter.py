@@ -1,4 +1,4 @@
-"""HTTP server and Prometheus metric definitions for the debsecan exporter.
+"""HTTP server and Prometheus metric definitions for the debvulns exporter.
 
 Metric registration
 -------------------
@@ -78,34 +78,34 @@ REGISTRY = CollectorRegistry()
 
 # Static / health metrics
 _EXPORTER_INFO = Info(
-    "debsecan_exporter",
+    "debvulns_exporter",
     "Metadata about the exporter configuration.",
     registry=REGISTRY,
 )
 _SCAN_STATUS = Gauge(
-    "debsecan_scan_status",
+    "debvulns_scan_status",
     "1 if the last vulnerability scan completed successfully, 0 otherwise.",
     registry=REGISTRY,
 )
 _LAST_SCAN_TS = Gauge(
-    "debsecan_last_scan_timestamp_seconds",
+    "debvulns_last_scan_timestamp_seconds",
     "Unix epoch timestamp of when the last scan was executed.",
     registry=REGISTRY,
 )
 _SCAN_DURATION = Gauge(
-    "debsecan_scan_duration_seconds",
+    "debvulns_scan_duration_seconds",
     "Duration of the last vulnerability scan in seconds.",
     registry=REGISTRY,
 )
 _PKG_COUNT = Gauge(
-    "debsecan_installed_packages_count",
+    "debvulns_installed_packages_count",
     "Total number of Debian packages currently installed on the host.",
     registry=REGISTRY,
 )
 
 # Aggregated metrics
 _VULNS_TOTAL = Gauge(
-    "debsecan_vulnerabilities_total",
+    "debvulns_vulnerabilities_total",
     "Aggregate count of vulnerabilities currently affecting the system.",
     ["severity", "fix_available", "remote"],
     registry=REGISTRY,
@@ -113,31 +113,31 @@ _VULNS_TOTAL = Gauge(
 
 # Per-(cve, package) metrics
 _VULN_INFO = Gauge(
-    "debsecan_vulnerability_info",
+    "debvulns_vulnerability_info",
     "Core fact metric — one series per active (cve, package) pair.",
     ["cve", "package", "urgency", "severity", "fix_available", "remote"],
     registry=REGISTRY,
 )
 _PKG_INFO = Gauge(
-    "debsecan_package_info",
+    "debvulns_package_info",
     "Installed version for each vulnerable package (one series per package).",
     ["package", "installed_version"],
     registry=REGISTRY,
 )
 _FIX_INFO = Gauge(
-    "debsecan_vulnerability_fix_info",
+    "debvulns_vulnerability_fix_info",
     "Fix version for each active (cve, package) pair.",
     ["cve", "package", "fix_version"],
     registry=REGISTRY,
 )
 _EPSS_SCORE = Gauge(
-    "debsecan_vulnerability_epss_score",
+    "debvulns_vulnerability_epss_score",
     "The EPSS probability score for the detected vulnerability.",
     ["cve", "package"],
     registry=REGISTRY,
 )
 _EPSS_PERCENTILE = Gauge(
-    "debsecan_vulnerability_epss_percentile",
+    "debvulns_vulnerability_epss_percentile",
     "The EPSS percentile rank of the detected vulnerability.",
     ["cve", "package"],
     registry=REGISTRY,

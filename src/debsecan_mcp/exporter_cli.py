@@ -5,7 +5,7 @@ Wires the RefreshThread (background cache refresh) and ExporterServer
 
 Usage
 -----
-    debsecan-exporter [options]
+    debvulns-exporter [options]
 
     Options:
       --port PORT               HTTP listen port (default: 9222)
@@ -36,7 +36,7 @@ _MIN_REFRESH_INTERVAL = 3600  # 1 hour
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="debsecan-exporter",
+        prog="debvulns-exporter",
         description="Prometheus exporter for Debian security vulnerabilities.",
     )
     parser.add_argument(
@@ -65,12 +65,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--cache-dir",
-        default="/var/cache/debsecan-exporter",
+        default="/var/cache/debvulns-exporter",
         dest="cache_dir",
         metavar="DIR",
         help=(
             "Directory used for warm-start disk cache of downloaded data "
-            "(default: /var/cache/debsecan-exporter). Disable with --no-cache."
+            "(default: /var/cache/debvulns-exporter). Disable with --no-cache."
         ),
     )
     parser.add_argument(
@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Failed to detect Debian suite: %s", exc)
         sys.exit(1)
 
-    logger.info("debsecan-exporter starting — suite=%s port=%d", suite, args.port)
+    logger.info("debvulns-exporter starting — suite=%s port=%d", suite, args.port)
 
     cache_dir = None if args.no_cache else args.cache_dir
 

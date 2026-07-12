@@ -24,7 +24,7 @@ The exporter therefore uses a **two-thread design**:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   debsecan-exporter                      │
+│                   debvulns-exporter                      │
 │                                                          │
 │  Thread 1 — Cache Refresher                              │
 │  ┌────────────────────────────────────────────────────┐  │
@@ -57,19 +57,19 @@ never blocked by a slow network.
 
 The exporter runs as a long-running systemd service (no timer required):
 
-**`/etc/systemd/system/debsecan-exporter.service`**
+**`/etc/systemd/system/debvulns-exporter.service`**
 ```ini
 [Unit]
-Description=Debsecan Prometheus native exporter
+Description=Debvulns Prometheus native exporter
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/debsecan-exporter --port 9222 --refresh-interval 24h
+ExecStart=/usr/local/bin/debvulns-exporter --port 9222 --refresh-interval 24h
 Restart=on-failure
 RestartSec=30s
-User=debsecan
+User=debvulns
 AmbientCapabilities=
 NoNewPrivileges=true
 
@@ -80,18 +80,18 @@ WantedBy=multi-user.target
 Enable with:
 ```bash
 systemctl daemon-reload
-systemctl enable --now debsecan-exporter.service
+systemctl enable --now debvulns-exporter.service
 ```
 
-All logs flow to journald: `journalctl -u debsecan-exporter.service -f`.
+All logs flow to journald: `journalctl -u debvulns-exporter.service -f`.
 
 ### Integration with the Existing Codebase
 
-The core scan pipeline already lives in `src/debsecan_mcp/` (vulnerability fetching,
+The core scan pipeline already lives in `src/debvulns_mcp/` (vulnerability fetching,
 package detection, EPSS scoring, categorisation). The exporter imports and calls these
 modules directly — it does **not** shell out to the CLI or duplicate any logic.
 
-All metrics are prefixed with the namespace `debsecan_`.
+All metrics are prefixed with the namespace `debvulns_`.
 
 ---
 
@@ -102,7 +102,7 @@ All metrics are prefixed with the namespace `debsecan_`.
 These metrics track the health of the exporter itself, the last scan time, and static
 metadata.
 
-#### `debsecan_exporter_info`
+#### `debvulns_exporter_info`
 
 * **Type**: Gauge
 * **Value**: Always `1`
@@ -111,7 +111,7 @@ metadata.
   * `suite`: Debian suite codename (e.g., `bookworm`, `trixie`, `sid`, `generic`).
 * **Description**: Metadata about the exporter configuration.
 
-#### `debsecan_scan_status`
+#### `debvulns_scan_status`
 
 * **Type**: Gauge
 * **Value**: `1` (success) or `0` (failure)
@@ -119,21 +119,21 @@ metadata.
 * **Description**: Indicates whether the last vulnerability scan/refresh completed
   successfully.
 
-#### `debsecan_last_scan_timestamp_seconds`
+#### `debvulns_last_scan_timestamp_seconds`
 
 * **Type**: Gauge
 * **Value**: Unix epoch timestamp of the last scan.
 * **Labels**: None
 * **Description**: Epoch timestamp of when the last scan was executed.
 
-#### `debsecan_scan_duration_seconds`
+#### `debvulns_scan_duration_seconds`
 
 * **Type**: Gauge
 * **Value**: Time taken in seconds.
 * **Labels**: None
 * **Description**: Duration of the last vulnerability scan in seconds.
 
-#### `debsecan_installed_packages_count`
+#### `debvulns_installed_packages_count`
 
 * **Type**: Gauge
 * **Value**: Count of installed packages.
@@ -152,7 +152,7 @@ metadata.
 These metrics provide quick top-level summaries suitable for high-level dashboards and
 general alerting.
 
-#### `debsecan_vulnerabilities_total`
+#### `debvulns_vulnerabilities_total`
 
 * **Type**: Gauge
 * **Value**: Count of detected vulnerabilities.
@@ -172,7 +172,7 @@ general alerting.
 > mapped to a derived severity by `categorise_vulnerabilities()`. This function uses a
 > composite of the raw urgency and the EPSS score to determine the final category. The
 > `severity` label in these metrics always reflects the **derived** category. The raw urgency
-> string is available on the per-CVE `debsecan_vulnerability_info` metric as the `urgency`
+> string is available on the per-CVE `debvulns_vulnerability_info` metric as the `urgency`
 > label.
 
 ---
@@ -195,7 +195,7 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 > info-metric join pattern. See the [Sample Output](#sample-prometheus-exposition-output)
 > section for worked examples.
 
-#### `debsecan_vulnerability_info`
+#### `debvulns_vulnerability_info`
 
 * **Type**: Gauge
 * **Value**: Always `1`
@@ -211,8 +211,8 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
     `unknown`). `unknown` corresponds to the `?` flag in the debsecan data.
 * **Description**: Core fact metric — one series per active `(cve, package)` pair detected
   on the host. Used as the primary join key and the basis for all alerting expressions.
-  Version information is available via `debsecan_package_info` and
-  `debsecan_vulnerability_fix_info`.
+  Version information is available via `debvulns_package_info` and
+  `debvulns_vulnerability_fix_info`.
 
 > [!NOTE]
 > `installed_version` and `fix_version` are intentionally absent from this metric. Both
@@ -222,7 +222,7 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 
 ---
 
-#### `debsecan_package_info`
+#### `debvulns_package_info`
 
 * **Type**: Gauge
 * **Value**: Always `1`
@@ -233,17 +233,17 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 * **Description**: Installed version for each Debian package that has at least one active
   vulnerability. One series per **unique package** (not per CVE), so cardinality is bounded
   by the number of vulnerable packages (~tens to hundreds) rather than the number of CVEs.
-  Join onto `debsecan_vulnerability_info` on `package` to retrieve the installed version for
+  Join onto `debvulns_vulnerability_info` on `package` to retrieve the installed version for
   alert annotations or dashboards.
 
 > [!NOTE]
-> Storing `installed_version` here rather than on `debsecan_vulnerability_info` means a
+> Storing `installed_version` here rather than on `debvulns_vulnerability_info` means a
 > package with 50 active CVEs contributes just **1** version-label series instead of 50.
 > Churn (on package upgrade) is isolated to this metric only.
 
 ---
 
-#### `debsecan_vulnerability_fix_info`
+#### `debvulns_vulnerability_fix_info`
 
 * **Type**: Gauge
 * **Value**: Always `1`
@@ -260,14 +260,14 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 > [!NOTE]
 > **Joining fix version into an alert**:
 > ```promql
-> debsecan_vulnerability_info{severity="critical", fix_available="true"}
+> debvulns_vulnerability_info{severity="critical", fix_available="true"}
 >   * on(cve, package) group_left(fix_version)
->   debsecan_vulnerability_fix_info
+>   debvulns_vulnerability_fix_info
 > ```
 
 ---
 
-#### `debsecan_vulnerability_epss_score`
+#### `debvulns_vulnerability_epss_score`
 
 * **Type**: Gauge
 * **Value**: Floating-point EPSS probability score between `0.0` and `1.0`.
@@ -280,9 +280,9 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 > [!NOTE]
 > **Design Decision**: The EPSS score is the **metric value**, not a label. This keeps label
 > cardinality clean and allows threshold-based PromQL filtering (e.g.,
-> `debsecan_vulnerability_epss_score > 0.75`).
+> `debvulns_vulnerability_epss_score > 0.75`).
 
-#### `debsecan_vulnerability_epss_percentile`
+#### `debvulns_vulnerability_epss_percentile`
 
 * **Type**: Gauge
 * **Value**: Floating-point EPSS percentile rank between `0.0` and `1.0`.
@@ -297,12 +297,12 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 
 | Label               | Metric(s)                                                           | Possible Values                                   | Notes                                           |
 |---------------------|---------------------------------------------------------------------|---------------------------------------------------|-------------------------------------------------|
-| `severity`          | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `critical`, `high`, `medium`, `low`, `negligible` | Derived by `categorise_vulnerabilities()`       |
-| `urgency`           | `debsecan_vulnerability_info`                                       | `high`, `medium`, `low`, `""`                     | Raw debsecan flag value                         |
-| `remote`            | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `true`, `false`, `unknown`                        | `unknown` maps to the `?` flag in debsecan data |
-| `fix_available`     | `debsecan_vulnerability_info`, `debsecan_vulnerabilities_total`     | `true`, `false`                                   | Directly from debsecan `F` flag                 |
-| `installed_version` | `debsecan_package_info`                                             | version string                                    | One series per package, not per CVE             |
-| `fix_version`       | `debsecan_vulnerability_fix_info`                                   | version string or `""`                            | Empty when no fixed version is known            |
+| `severity`          | `debvulns_vulnerability_info`, `debvulns_vulnerabilities_total`     | `critical`, `high`, `medium`, `low`, `negligible` | Derived by `categorise_vulnerabilities()`       |
+| `urgency`           | `debvulns_vulnerability_info`                                       | `high`, `medium`, `low`, `""`                     | Raw debsecan flag value                         |
+| `remote`            | `debvulns_vulnerability_info`, `debvulns_vulnerabilities_total`     | `true`, `false`, `unknown`                        | `unknown` maps to the `?` flag in debsecan data |
+| `fix_available`     | `debvulns_vulnerability_info`, `debvulns_vulnerabilities_total`     | `true`, `false`                                   | Directly from debsecan `F` flag                 |
+| `installed_version` | `debvulns_package_info`                                             | version string                                    | One series per package, not per CVE             |
+| `fix_version`       | `debvulns_vulnerability_fix_info`                                   | version string or `""`                            | Empty when no fixed version is known            |
 
 ---
 
@@ -311,87 +311,87 @@ can be joined in PromQL on the natural key `(cve, package)` or `package`.
 Below is an example of the `/metrics` endpoint output:
 
 ```text
-# HELP debsecan_exporter_info Metadata about the exporter configuration.
-# TYPE debsecan_exporter_info gauge
-debsecan_exporter_info{suite="bookworm",version="0.1.0"} 1
+# HELP debvulns_exporter_info Metadata about the exporter configuration.
+# TYPE debvulns_exporter_info gauge
+debvulns_exporter_info{suite="bookworm",version="0.1.0"} 1
 
-# HELP debsecan_scan_status Indicates whether the last vulnerability scan completed successfully.
-# TYPE debsecan_scan_status gauge
-debsecan_scan_status 1
+# HELP debvulns_scan_status Indicates whether the last vulnerability scan completed successfully.
+# TYPE debvulns_scan_status gauge
+debvulns_scan_status 1
 
-# HELP debsecan_last_scan_timestamp_seconds Epoch timestamp of when the last scan was executed.
-# TYPE debsecan_last_scan_timestamp_seconds gauge
-debsecan_last_scan_timestamp_seconds 1780824000
+# HELP debvulns_last_scan_timestamp_seconds Epoch timestamp of when the last scan was executed.
+# TYPE debvulns_last_scan_timestamp_seconds gauge
+debvulns_last_scan_timestamp_seconds 1780824000
 
-# HELP debsecan_scan_duration_seconds Duration of the last vulnerability scan in seconds.
-# TYPE debsecan_scan_duration_seconds gauge
-debsecan_scan_duration_seconds 2.45
+# HELP debvulns_scan_duration_seconds Duration of the last vulnerability scan in seconds.
+# TYPE debvulns_scan_duration_seconds gauge
+debvulns_scan_duration_seconds 2.45
 
-# HELP debsecan_installed_packages_count Total number of Debian packages currently installed on the host.
-# TYPE debsecan_installed_packages_count gauge
-debsecan_installed_packages_count 852
+# HELP debvulns_installed_packages_count Total number of Debian packages currently installed on the host.
+# TYPE debvulns_installed_packages_count gauge
+debvulns_installed_packages_count 852
 
-# HELP debsecan_vulnerabilities_total Aggregate count of vulnerabilities affecting the system.
-# TYPE debsecan_vulnerabilities_total gauge
-debsecan_vulnerabilities_total{fix_available="true",remote="true",severity="critical"} 1
-debsecan_vulnerabilities_total{fix_available="false",remote="true",severity="high"} 2
-debsecan_vulnerabilities_total{fix_available="true",remote="false",severity="medium"} 4
-debsecan_vulnerabilities_total{fix_available="true",remote="false",severity="low"} 12
+# HELP debvulns_vulnerabilities_total Aggregate count of vulnerabilities affecting the system.
+# TYPE debvulns_vulnerabilities_total gauge
+debvulns_vulnerabilities_total{fix_available="true",remote="true",severity="critical"} 1
+debvulns_vulnerabilities_total{fix_available="false",remote="true",severity="high"} 2
+debvulns_vulnerabilities_total{fix_available="true",remote="false",severity="medium"} 4
+debvulns_vulnerabilities_total{fix_available="true",remote="false",severity="low"} 12
 
-# HELP debsecan_vulnerability_info Core fact metric — one series per active (cve, package) pair.
-# TYPE debsecan_vulnerability_info gauge
-debsecan_vulnerability_info{cve="CVE-2023-38408",fix_available="true",package="openssh-client",remote="true",severity="critical",urgency="high"} 1
-debsecan_vulnerability_info{cve="CVE-2023-4806",fix_available="false",package="libc6",remote="true",severity="high",urgency="high"} 1
-debsecan_vulnerability_info{cve="CVE-2024-1234",fix_available="false",package="libfoo1",remote="unknown",severity="medium",urgency="medium"} 1
+# HELP debvulns_vulnerability_info Core fact metric — one series per active (cve, package) pair.
+# TYPE debvulns_vulnerability_info gauge
+debvulns_vulnerability_info{cve="CVE-2023-38408",fix_available="true",package="openssh-client",remote="true",severity="critical",urgency="high"} 1
+debvulns_vulnerability_info{cve="CVE-2023-4806",fix_available="false",package="libc6",remote="true",severity="high",urgency="high"} 1
+debvulns_vulnerability_info{cve="CVE-2024-1234",fix_available="false",package="libfoo1",remote="unknown",severity="medium",urgency="medium"} 1
 
-# HELP debsecan_package_info Installed version for each vulnerable package (one series per package).
-# TYPE debsecan_package_info gauge
-debsecan_package_info{installed_version="1:9.2p1-2+deb12u1",package="openssh-client"} 1
-debsecan_package_info{installed_version="2.36-9+deb12u3",package="libc6"} 1
-debsecan_package_info{installed_version="1.2.3-1",package="libfoo1"} 1
+# HELP debvulns_package_info Installed version for each vulnerable package (one series per package).
+# TYPE debvulns_package_info gauge
+debvulns_package_info{installed_version="1:9.2p1-2+deb12u1",package="openssh-client"} 1
+debvulns_package_info{installed_version="2.36-9+deb12u3",package="libc6"} 1
+debvulns_package_info{installed_version="1.2.3-1",package="libfoo1"} 1
 
-# HELP debsecan_vulnerability_fix_info Fix version for each active (cve, package) pair.
-# TYPE debsecan_vulnerability_fix_info gauge
-debsecan_vulnerability_fix_info{cve="CVE-2023-38408",fix_version="1:9.3p1-1",package="openssh-client"} 1
-debsecan_vulnerability_fix_info{cve="CVE-2023-4806",fix_version="",package="libc6"} 1
-debsecan_vulnerability_fix_info{cve="CVE-2024-1234",fix_version="",package="libfoo1"} 1
+# HELP debvulns_vulnerability_fix_info Fix version for each active (cve, package) pair.
+# TYPE debvulns_vulnerability_fix_info gauge
+debvulns_vulnerability_fix_info{cve="CVE-2023-38408",fix_version="1:9.3p1-1",package="openssh-client"} 1
+debvulns_vulnerability_fix_info{cve="CVE-2023-4806",fix_version="",package="libc6"} 1
+debvulns_vulnerability_fix_info{cve="CVE-2024-1234",fix_version="",package="libfoo1"} 1
 
-# HELP debsecan_vulnerability_epss_score The EPSS probability score for the detected vulnerability.
-# TYPE debsecan_vulnerability_epss_score gauge
-debsecan_vulnerability_epss_score{cve="CVE-2023-38408",package="openssh-client"} 0.9423
-debsecan_vulnerability_epss_score{cve="CVE-2023-4806",package="libc6"} 0.1245
-debsecan_vulnerability_epss_score{cve="CVE-2024-1234",package="libfoo1"} 0.0312
+# HELP debvulns_vulnerability_epss_score The EPSS probability score for the detected vulnerability.
+# TYPE debvulns_vulnerability_epss_score gauge
+debvulns_vulnerability_epss_score{cve="CVE-2023-38408",package="openssh-client"} 0.9423
+debvulns_vulnerability_epss_score{cve="CVE-2023-4806",package="libc6"} 0.1245
+debvulns_vulnerability_epss_score{cve="CVE-2024-1234",package="libfoo1"} 0.0312
 
-# HELP debsecan_vulnerability_epss_percentile The EPSS percentile rank of the detected vulnerability.
-# TYPE debsecan_vulnerability_epss_percentile gauge
-debsecan_vulnerability_epss_percentile{cve="CVE-2023-38408",package="openssh-client"} 0.9884
-debsecan_vulnerability_epss_percentile{cve="CVE-2023-4806",package="libc6"} 0.4567
-debsecan_vulnerability_epss_percentile{cve="CVE-2024-1234",package="libfoo1"} 0.1102
+# HELP debvulns_vulnerability_epss_percentile The EPSS percentile rank of the detected vulnerability.
+# TYPE debvulns_vulnerability_epss_percentile gauge
+debvulns_vulnerability_epss_percentile{cve="CVE-2023-38408",package="openssh-client"} 0.9884
+debvulns_vulnerability_epss_percentile{cve="CVE-2023-4806",package="libc6"} 0.4567
+debvulns_vulnerability_epss_percentile{cve="CVE-2024-1234",package="libfoo1"} 0.1102
 ```
 
 ### PromQL Join Examples
 
 Joining installed version onto a vulnerability query:
 ```promql
-debsecan_vulnerability_info{severity="critical"}
+debvulns_vulnerability_info{severity="critical"}
   * on(package) group_left(installed_version)
-  debsecan_package_info
+  debvulns_package_info
 ```
 
 Joining fix version for remediation dashboards:
 ```promql
-debsecan_vulnerability_info{fix_available="true"}
+debvulns_vulnerability_info{fix_available="true"}
   * on(cve, package) group_left(fix_version)
-  debsecan_vulnerability_fix_info
+  debvulns_vulnerability_fix_info
 ```
 
 Full enrichment — all context in one result (e.g., for a Grafana table panel):
 ```promql
-debsecan_vulnerability_info{severity=~"critical|high"}
+debvulns_vulnerability_info{severity=~"critical|high"}
   * on(package) group_left(installed_version)
-  debsecan_package_info
+  debvulns_package_info
   * on(cve, package) group_left(fix_version)
-  debsecan_vulnerability_fix_info
+  debvulns_vulnerability_fix_info
 ```
 
 ---
@@ -406,10 +406,10 @@ a single failed scan write.
 
 ```yaml
 groups:
-  - name: debsecan_alerts
+  - name: debvulns_alerts
     rules:
       - alert: DebsecanCriticalVulnerabilityWithFix
-        expr: debsecan_vulnerabilities_total{severity="critical", fix_available="true"} > 0
+        expr: debvulns_vulnerabilities_total{severity="critical", fix_available="true"} > 0
         for: 1m
         labels:
           severity: critical
@@ -424,15 +424,15 @@ groups:
 ### 2. Alert on High EPSS Score Vulnerability
 
 Fires when a vulnerability has an EPSS score > 0.70, indicating active or imminent
-exploitation in the wild. The join with `debsecan_vulnerability_info` enriches the alert
+exploitation in the wild. The join with `debvulns_vulnerability_info` enriches the alert
 with `severity` for routing rules.
 
 ```yaml
       - alert: DebsecanHighEpssScoreVulnerability
         expr: >
-          debsecan_vulnerability_epss_score > 0.70
+          debvulns_vulnerability_epss_score > 0.70
             * on(cve, package) group_left(severity)
-            debsecan_vulnerability_info
+            debvulns_vulnerability_info
         for: 1m
         labels:
           severity: warning
@@ -448,7 +448,7 @@ with `severity` for routing rules.
 
 ```yaml
       - alert: DebsecanScanFailed
-        expr: debsecan_scan_status == 0
+        expr: debvulns_scan_status == 0
         for: 15m
         labels:
           severity: warning
@@ -457,20 +457,20 @@ with `severity` for routing rules.
           description: >
             The cache-refresh thread on {{ $labels.instance }} failed its last scan.
             The exporter continues serving the previous cached snapshot.
-            Check logs with `journalctl -u debsecan-exporter.service`.
+            Check logs with `journalctl -u debvulns-exporter.service`.
 
       - alert: DebsecanNoScanReporting
-        expr: (time() - debsecan_last_scan_timestamp_seconds) > 86400
+        expr: (time() - debvulns_last_scan_timestamp_seconds) > 86400
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Debsecan cache stale on {{ $labels.instance }}"
           description: >
-            The debsecan-exporter on {{ $labels.instance }} has not refreshed its
+            The debvulns-exporter on {{ $labels.instance }} has not refreshed its
             vulnerability cache in over 24 hours. Check the service status:
-            `systemctl status debsecan-exporter.service` and
-            `journalctl -u debsecan-exporter.service`.
+            `systemctl status debvulns-exporter.service` and
+            `journalctl -u debvulns-exporter.service`.
 ```
 
 ### 4. Alert on Remote-Exploitable Vulnerability with No Fix
@@ -480,7 +480,7 @@ available. Use this to trigger compensating controls (WAF rules, network isolati
 
 ```yaml
       - alert: DebsecanRemoteExploitableNoFix
-        expr: debsecan_vulnerabilities_total{remote="true", fix_available="false", severity=~"critical|high"} > 0
+        expr: debvulns_vulnerabilities_total{remote="true", fix_available="false", severity=~"critical|high"} > 0
         for: 1m
         labels:
           severity: critical
@@ -505,7 +505,7 @@ The following points require a decision before implementation begins:
 
 2. **EPSS data on scan failure**: If the EPSS download fails but the vulnerability scan
    succeeds, should the cache refresh serve partial metrics (vulnerability info without EPSS
-   scores) or retain the last known-good cache and set `debsecan_scan_status 0`?
+   scores) or retain the last known-good cache and set `debvulns_scan_status 0`?
 
 3. **Refresh interval configuration**: Should the 24 h refresh interval be configurable via a
    CLI flag (`--refresh-interval`) and/or an environment variable? What should the minimum

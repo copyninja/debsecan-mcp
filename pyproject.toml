@@ -25,7 +25,7 @@ test = [
 [project.scripts]
 debsecan-mcp = "debsecan_mcp.main:main"
 debvulns = "debsecan_mcp.cli:main"
-debsecan-exporter = "debsecan_mcp.exporter_cli:main"
+debvulns-exporter = "debsecan_mcp.exporter_cli:main"
 
 [build-system]
 requires = ["hatchling"]
