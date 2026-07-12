@@ -48,7 +48,173 @@ pip install -e .
 
 ## Usage
 
-### Running the MCP Server
+### Standalone CLI Tool (`debvulns`)
+
+The package includes a standalone CLI tool `debvulns` that allows you to scan for
+vulnerabilities directly from the command line without running the MCP server.
+
+On first run, `debvulns` downloads the vulnerabilities and EPSS data and caches them locally
+(defaulting to `/var/cache/debvulns` or falling back to `~/.cache/debvulns` if the default
+path is unwritable). The cache is refreshed automatically if it is older than 24 hours.
+
+#### Running the CLI Tool
+
+```bash
+debvulns
+```
+
+#### Command Line Options
+
+```bash
+debvulns --help
+```
+
+Options:
+- `-s, --severity {critical,high,medium,low,negligible}` - Filter vulnerabilities by severity.
+  By default, lists all vulnerabilities grouped by severity.
+- `-f, --format {json,csv}` - Output format (default: `json`).
+- `--sort-by {package,cve}` - Sort vulnerabilities by package name or CVE ID.
+- `--suite SUITE` - Debian suite name (e.g., `bookworm`, `sid`). Automatically detected by
+  default.
+- `--cache-dir PATH` - Directory to cache fetched and parsed data
+  (default: `/var/cache/debvulns`).
+- `--no-cache` - Do not use cached data, force downloading and parsing.
+- `--vuln-url URL` - Custom URL or local path for Debian Security Tracker data.
+- `--epss-url URL` - Custom URL or local path for EPSS scores data.
+- `-v, --verbose` - Enable verbose debug logging (sent to stderr).
+
+#### Examples
+
+**Filter high severity vulnerabilities, sort by CVE, and output in CSV format:**
+```bash
+debvulns --severity high --sort-by cve --format csv
+```
+
+**Run for a specific suite without using cached data:**
+```bash
+debvulns --suite trixie --no-cache
+```
+
+---
+
+### Prometheus Exporter (`debvulns-exporter`)
+
+`debvulns-exporter` is a long-running HTTP server that exposes vulnerability metrics in the
+[Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/).
+It runs a periodic background scan and serves the latest results on `/metrics` without
+blocking the scrape.
+
+#### Running the Exporter
+
+```bash
+debvulns-exporter
+```
+
+This starts the exporter on the default port **9222** and begins an initial vulnerability
+scan. The `/metrics` endpoint returns `503` until the first scan completes.
+
+#### Command Line Options
+
+```bash
+debvulns-exporter --help
+```
+
+Options:
+- `--port PORT` - TCP port to expose `/metrics` on (default: `9222`).
+- `--suite SUITE` - Debian suite codename (e.g. `bookworm`, `sid`). Auto-detected by default.
+- `--refresh-interval SECS` - Seconds between full vulnerability scans
+  (default: `86400` = 24 h, minimum: `3600` = 1 h).
+- `--cache-dir DIR` - Directory for warm-start disk cache of downloaded data
+  (default: `/var/cache/debvulns-exporter`).
+- `--no-cache` - Disable disk caching; always re-download on every refresh.
+- `--vuln-url URL` - Override the Debian Security Tracker vulnerability data URL.
+- `--epss-url URL` - Override the EPSS CSV data URL.
+- `-v, --verbose` - Enable debug-level logging to stderr.
+
+#### Health Endpoints
+
+| Path | Description |
+|------|-------------|
+| `/metrics` | Prometheus metrics (returns `503` until the first scan completes) |
+| `/-/healthy` | Always returns `200 OK` — indicates the process is alive |
+| `/-/ready` | Returns `200 Ready` once the first scan has succeeded, `503` otherwise |
+
+#### Exposed Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `debvulns_exporter_info` | Info | `version`, `suite` | Exporter metadata |
+| `debvulns_scan_status` | Gauge | — | `1` if the last scan succeeded, `0` otherwise |
+| `debvulns_last_scan_timestamp_seconds` | Gauge | — | Unix epoch of the last scan |
+| `debvulns_scan_duration_seconds` | Gauge | — | Duration of the last scan in seconds |
+| `debvulns_installed_packages_count` | Gauge | — | Total installed Debian packages |
+| `debvulns_vulnerabilities_total` | Gauge | `severity`, `fix_available`, `remote` | Aggregate vulnerability count |
+| `debvulns_vulnerability_info` | Gauge | `cve`, `package`, `urgency`, `severity`, `fix_available`, `remote` | One series per active (CVE, package) pair |
+| `debvulns_package_info` | Gauge | `package`, `installed_version` | Installed version of each vulnerable package |
+| `debvulns_vulnerability_fix_info` | Gauge | `cve`, `package`, `fix_version` | Fix version for each (CVE, package) pair |
+| `debvulns_vulnerability_epss_score` | Gauge | `cve`, `package` | EPSS probability score |
+| `debvulns_vulnerability_epss_percentile` | Gauge | `cve`, `package` | EPSS percentile rank |
+
+#### Running as a systemd Service
+
+A ready-to-use systemd unit file is provided at
+[`contrib/systemd/debvulns-exporter.service`](contrib/systemd/debvulns-exporter.service).
+
+**Setup steps:**
+
+1. Create a dedicated system user:
+   ```bash
+   sudo useradd --system --no-create-home --shell /usr/sbin/nologin debvulns
+   ```
+
+2. Install the systemd unit:
+   ```bash
+   sudo cp contrib/systemd/debvulns-exporter.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+3. Enable and start the service:
+   ```bash
+   sudo systemctl enable --now debvulns-exporter
+   ```
+
+4. Check service status and logs:
+   ```bash
+   sudo systemctl status debvulns-exporter
+   sudo journalctl -u debvulns-exporter -f
+   ```
+
+The unit runs as the `debvulns` user, applies security hardening
+(`ProtectSystem=strict`, `ProtectHome=true`, `NoNewPrivileges=true`), and writes its disk
+cache to `/var/cache/debvulns-exporter`.
+
+> [!NOTE]
+> Because `ProtectHome=true` is set, the Python runtime and virtual environment must be
+> installed outside `/home` (e.g. via `pip install debvulns` system-wide, or by setting
+> `UV_PYTHON_INSTALL_DIR=/opt/app/python` when using `uv`).
+
+#### Grafana Dashboard
+
+A pre-built Grafana dashboard JSON is provided at
+[`contrib/grafana/debvulns-dashboard.json`](contrib/grafana/debvulns-dashboard.json).
+
+To import it:
+
+1. In Grafana, go to **Dashboards → Import**.
+2. Upload `contrib/grafana/debvulns-dashboard.json` or paste its contents.
+3. Select your Prometheus data source and click **Import**.
+
+The dashboard includes panels for:
+- Total vulnerability counts by severity
+- Scan health and last-scan timestamp
+- Per-package vulnerability breakdown
+- EPSS score distribution
+
+---
+
+### MCP Server (`debvulns-mcp`)
+
+#### Running the MCP Server
 
 ```bash
 debvulns-mcp
@@ -60,7 +226,7 @@ Or with a specific Debian suite:
 DEBSECAN_SUITE=bookworm debvulns-mcp
 ```
 
-### Command Line Options
+#### Command Line Options
 
 ```bash
 debvulns-mcp --help
@@ -72,9 +238,9 @@ Options:
 - `--host HOST` - Host to bind to for HTTP transport (default: 0.0.0.0)
 - `--port PORT` - Port to bind to for HTTP transport (default: 8000)
 
-### Transport Modes
+#### Transport Modes
 
-#### STDIO Mode (Default)
+##### STDIO Mode (Default)
 
 Used for direct integration with AI assistants like Claude Desktop or VSCode.
 
@@ -82,7 +248,7 @@ Used for direct integration with AI assistants like Claude Desktop or VSCode.
 debvulns-mcp --transport stdio
 ```
 
-#### HTTP Modes
+##### HTTP Modes
 
 For HTTP-based access, use `sse` or `streamable-http`:
 
@@ -96,7 +262,7 @@ debvulns-mcp --transport streamable-http --port 8080 --mount-path /mcp
 
 Note: HTTP modes require running behind a web server. See [HTTP Server Setup](#http-server-setup) below.
 
-### HTTP Server Setup
+#### HTTP Server Setup
 
 The HTTP transport modes need to be served by a WSGI/ASGI server. Example with uvicorn:
 
@@ -115,56 +281,15 @@ Or use the built-in development server:
 debvulns-mcp --transport sse --host 0.0.0.0 --port 8000 --mount-path /mcp
 ```
 
-### Standalone CLI Tool (`debvulns`)
+#### Available MCP Tools
 
-The package includes a standalone CLI tool `debvulns` that allows you to scan for vulnerabilities directly from the command line without running the MCP server.
-
-On first run, `debvulns` downloads the vulnerabilities and EPSS data and caches them locally (defaulting to `/var/cache/debvulns` or falling back to `~/.cache/debvulns` if the default path is unwritable). The cache is refreshed automatically if it is older than 24 hours.
-
-#### Running the CLI Tool
-
-```bash
-debvulns
-```
-
-#### Command Line Options
-
-```bash
-debvulns --help
-```
-
-Options:
-- `-s, --severity {critical,high,medium,low,negligible}` - Filter vulnerabilities by severity. By default, lists all vulnerabilities grouped by severity.
-- `-f, --format {json,csv}` - Output format (default: `json`).
-- `--sort-by {package,cve}` - Sort vulnerabilities by package name or CVE ID.
-- `--suite SUITE` - Debian suite name (e.g., `bookworm`, `sid`). Automatically detected by default.
-- `--cache-dir PATH` - Directory to cache fetched and parsed data (default: `/var/cache/debvulns`).
-- `--no-cache` - Do not use cached data, force downloading and parsing.
-- `--vuln-url URL` - Custom URL or local path for Debian Security Tracker data.
-- `--epss-url URL` - Custom URL or local path for EPSS scores data.
-- `-v, --verbose` - Enable verbose debug logging (sent to stderr).
-
-#### Examples
-
-**Filter high severity vulnerabilities, sort by CVE, and output in CSV format:**
-```bash
-debvulns --severity high --sort-by cve --format csv
-```
-
-**Run for a specific suite without using cached data:**
-```bash
-debvulns --suite trixie --no-cache
-```
-
-### Available Tools
-
-#### `list_vulnerabilities`
+##### `list_vulnerabilities`
 
 Lists all vulnerabilities affecting the currently installed packages on the
 system. Categorises them by severity (critical, high, medium, low, negligible)
 and EPSS score.
 
-#### `research_cves`
+##### `research_cves`
 
 Provides detailed information for a list of CVE IDs, including:
 - Package name
@@ -173,6 +298,8 @@ Provides detailed information for a list of CVE IDs, including:
 - Whether a fix is available
 - Remote exploitability
 - Description
+
+---
 
 ## Adding to VSCode
 
