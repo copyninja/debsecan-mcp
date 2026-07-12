@@ -384,3 +384,35 @@ Note: HTTP mode requires the MCP client to support HTTP transport.
 - Python 3.11+
 - Debian-based distribution (Debian, Ubuntu, etc.)
 - Network access to download vulnerability data
+
+> [!NOTE]
+> `python3-apt` (the `apt_pkg` C extension) is **optional but recommended**. When present,
+> `debvulns` uses the APT cache to enumerate installed packages, which correctly resolves
+> binary-to-source package mappings and uses the native APT version-comparison algorithm.
+>
+> Without `python3-apt`, the tool falls back to `dpkg-query`. This covers most cases but
+> may miss vulnerabilities tracked under a source package name that differs from the binary
+> package name, leading to incomplete results.
+>
+> Install it with:
+> ```bash
+> sudo apt install python3-apt
+> ```
+>
+> **Using inside a virtual environment:**
+>
+> `python3-apt` is a compiled C extension tied to the system Python and cannot be installed
+> via `pip`. Inside a venv you have two options:
+>
+> **Option 1 — Inherit system site-packages (simplest):**
+> ```bash
+> python3 -m venv --system-site-packages .venv
+> ```
+> This gives the venv access to the system-installed `apt_pkg` module.
+>
+> **Option 2 — Install from the upstream git repository:**
+> First install the required build dependencies, then install directly via pip:
+> ```bash
+> sudo apt install build-essential libapt-pkg-dev python3-dev
+> pip install git+https://salsa.debian.org/apt-team/python-apt.git
+> ```
