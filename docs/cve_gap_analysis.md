@@ -111,7 +111,7 @@ version of the `6.1.x` branch. The `6.1.174-1` fix only applies to kernels in th
 
 ## Fix Applied
 
-### `src/debsecan_mcp/vulnerability.py`
+### `src/debvulns/vulnerability.py`
 
 ```python
 # BEFORE (buggy):

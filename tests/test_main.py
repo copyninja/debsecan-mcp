@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from debsecan_mcp import main
-from debsecan_mcp.main import detect_suite, list_vulnerabilities, research_cves
+from debvulns import main
+from debvulns.main import detect_suite, list_vulnerabilities, research_cves
 from tests.conftest import requires_debsecan
 
 
@@ -85,9 +85,9 @@ class TestListVulnerabilities:
     async def test_list_vulnerabilities_returns_dict(
         self, sample_packages, mock_vulnerability_feed, sample_epss_data
     ):
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", mock_vulnerability_feed):
-                with patch("debsecan_mcp.main.epss_data", sample_epss_data):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_vulnerability_feed):
+                with patch("debvulns.main.epss_data", sample_epss_data):
                     result = await list_vulnerabilities()
 
                     assert isinstance(result, dict)
@@ -108,10 +108,10 @@ class TestListVulnerabilities:
             ]
         }
 
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.epss_data", sample_epss_data):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.epss_data", sample_epss_data):
                 mocker.patch(
-                    "debsecan_mcp.main.vulnerability.fetch_data",
+                    "debvulns.main.vulnerability.fetch_data",
                     return_value=mock_vuln_feed,
                 )
 
@@ -121,12 +121,12 @@ class TestListVulnerabilities:
 
     @pytest.mark.asyncio
     async def test_list_vulnerabilities_no_vulns(self, sample_packages):
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", {}):
-                with patch("debsecan_mcp.main.epss_data", {}):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", {}):
+                with patch("debvulns.main.epss_data", {}):
                     # To hit the string return 'No vulnerabilities detected...', categorized must be empty.
                     with patch(
-                        "debsecan_mcp.main.vulnerability.categorise_vulnerabilities",
+                        "debvulns.main.vulnerability.categorise_vulnerabilities",
                         return_value={},
                     ):
                         result = await list_vulnerabilities()
@@ -155,9 +155,9 @@ class TestListVulnerabilities:
 
         mock_feed = {"bash": [vuln1, vuln2]}
 
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", mock_feed):
-                with patch("debsecan_mcp.main.epss_data", sample_epss_data):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_feed):
+                with patch("debvulns.main.epss_data", sample_epss_data):
                     result = await list_vulnerabilities()
 
                     cve_ids = []
@@ -169,9 +169,9 @@ class TestListVulnerabilities:
 class TestResearchCves:
     @pytest.mark.asyncio
     async def test_research_cves_found(self, sample_packages, mock_vulnerability_feed):
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", mock_vulnerability_feed):
-                with patch("debsecan_mcp.main.epss_data", {}):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_vulnerability_feed):
+                with patch("debvulns.main.epss_data", {}):
                     result = await research_cves(["CVE-2024-1234"])
 
                     assert isinstance(result, str)
@@ -179,8 +179,8 @@ class TestResearchCves:
 
     @pytest.mark.asyncio
     async def test_research_cves_not_found(self):
-        with patch("debsecan_mcp.main.installed_packages", []):
-            with patch("debsecan_mcp.main.vulnerability_feed", {}):
+        with patch("debvulns.main.installed_packages", []):
+            with patch("debvulns.main.vulnerability_feed", {}):
                 result = await research_cves(["CVE-9999-9999"])
 
                 assert isinstance(result, str)
@@ -198,9 +198,9 @@ class TestResearchCves:
 
         mock_feed = {"bash": [mock_vuln]}
 
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", mock_feed):
-                with patch("debsecan_mcp.main.epss_data", {}):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_feed):
+                with patch("debvulns.main.epss_data", {}):
                     result = await research_cves(["cve-2024-1234"])
 
                     assert "CVE-2024-1234" in result
@@ -225,9 +225,9 @@ class TestResearchCves:
 
         mock_feed = {"bash": [mock_vuln1, mock_vuln2]}
 
-        with patch("debsecan_mcp.main.installed_packages", sample_packages):
-            with patch("debsecan_mcp.main.vulnerability_feed", mock_feed):
-                with patch("debsecan_mcp.main.epss_data", {}):
+        with patch("debvulns.main.installed_packages", sample_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_feed):
+                with patch("debvulns.main.epss_data", {}):
                     result = await research_cves(["CVE-2024-1234", "CVE-2024-5678"])
 
                     assert "CVE-2024-1234" in result
@@ -273,19 +273,19 @@ class TestDebsecanIntegration:
 
 
 class TestCreateMcp:
-    @patch("debsecan_mcp.main.FastMCP")
+    @patch("debvulns.main.FastMCP")
     def test_create_mcp_stdio(self, mock_fastmcp):
         main.create_mcp("stdio", "0.0.0.0", 8000, "/mcp")
         mock_fastmcp.assert_called_once_with("DebSecCan")
 
-    @patch("debsecan_mcp.main.FastMCP")
+    @patch("debvulns.main.FastMCP")
     def test_create_mcp_sse(self, mock_fastmcp):
         main.create_mcp("sse", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(
             "DebSecCan", host="127.0.0.1", port=9000, sse_path="/test"
         )
 
-    @patch("debsecan_mcp.main.FastMCP")
+    @patch("debvulns.main.FastMCP")
     def test_create_mcp_streamable_http(self, mock_fastmcp):
         main.create_mcp("streamable-http", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(
@@ -294,8 +294,8 @@ class TestCreateMcp:
 
 
 class TestMain:
-    @patch("debsecan_mcp.main.asyncio.get_event_loop")
-    @patch("debsecan_mcp.main.create_mcp")
+    @patch("debvulns.main.asyncio.get_event_loop")
+    @patch("debvulns.main.create_mcp")
     @patch("sys.argv", ["main.py", "--transport", "stdio"])
     def test_main_stdio(self, mock_create_mcp, mock_get_loop):
         mock_mcp = MagicMock()
@@ -309,8 +309,8 @@ class TestMain:
         mock_mcp.run.assert_called_once_with(transport="stdio")
         mock_loop.run_until_complete.assert_called_once()
 
-    @patch("debsecan_mcp.main.asyncio.get_event_loop")
-    @patch("debsecan_mcp.main.create_mcp")
+    @patch("debvulns.main.asyncio.get_event_loop")
+    @patch("debvulns.main.create_mcp")
     @patch(
         "sys.argv",
         [
@@ -337,8 +337,8 @@ class TestMain:
         mock_mcp.run.assert_called_once_with(transport="sse")
         mock_loop.run_until_complete.assert_called_once()
 
-    @patch("debsecan_mcp.main.asyncio.get_event_loop")
-    @patch("debsecan_mcp.main.create_mcp")
+    @patch("debvulns.main.asyncio.get_event_loop")
+    @patch("debvulns.main.create_mcp")
     @patch("sys.argv", ["main.py", "--transport", "streamable-http"])
     def test_main_streamable_http(self, mock_create_mcp, mock_get_loop):
         mock_mcp = MagicMock()
@@ -354,8 +354,8 @@ class TestMain:
         mock_mcp.run.assert_called_once_with(transport="streamable-http")
         mock_loop.run_until_complete.assert_called_once()
 
-    @patch("debsecan_mcp.main.asyncio.get_event_loop")
-    @patch("debsecan_mcp.main.create_mcp")
+    @patch("debvulns.main.asyncio.get_event_loop")
+    @patch("debvulns.main.create_mcp")
     @patch("sys.argv", ["main.py"])
     def test_main_initialization_failure(self, mock_create_mcp, mock_get_loop, caplog):
         mock_mcp = MagicMock()
@@ -374,10 +374,10 @@ class TestMain:
 
 
 class TestInitialize:
-    @patch("debsecan_mcp.main.epss.download_epss", new_callable=AsyncMock)
-    @patch("debsecan_mcp.main.package.get_installed_packages")
-    @patch("debsecan_mcp.main.detect_suite")
-    @patch("debsecan_mcp.main.vulnerability.fetch_data", new_callable=AsyncMock)
+    @patch("debvulns.main.epss.download_epss", new_callable=AsyncMock)
+    @patch("debvulns.main.package.get_installed_packages")
+    @patch("debvulns.main.detect_suite")
+    @patch("debvulns.main.vulnerability.fetch_data", new_callable=AsyncMock)
     @pytest.mark.asyncio
     async def test_initialize_success(
         self, mock_fetch_data, mock_detect, mock_get_pkgs, mock_epss
@@ -393,10 +393,10 @@ class TestInitialize:
         assert main.installed_packages == []
         assert main.vulnerability_feed == {"bash": []}
 
-    @patch("debsecan_mcp.main.epss.download_epss", new_callable=AsyncMock)
-    @patch("debsecan_mcp.main.package.get_installed_packages")
-    @patch("debsecan_mcp.main.detect_suite")
-    @patch("debsecan_mcp.main.vulnerability.fetch_data", new_callable=AsyncMock)
+    @patch("debvulns.main.epss.download_epss", new_callable=AsyncMock)
+    @patch("debvulns.main.package.get_installed_packages")
+    @patch("debvulns.main.detect_suite")
+    @patch("debvulns.main.vulnerability.fetch_data", new_callable=AsyncMock)
     @pytest.mark.asyncio
     async def test_initialize_fallback_generic(
         self, mock_fetch_data, mock_detect, mock_get_pkgs, mock_epss
@@ -410,10 +410,10 @@ class TestInitialize:
         mock_fetch_data.assert_any_call("bookworm")
         mock_fetch_data.assert_any_call("GENERIC")
 
-    @patch("debsecan_mcp.main.epss.download_epss", new_callable=AsyncMock)
-    @patch("debsecan_mcp.main.package.get_installed_packages")
-    @patch("debsecan_mcp.main.detect_suite")
-    @patch("debsecan_mcp.main.vulnerability.fetch_data", new_callable=AsyncMock)
+    @patch("debvulns.main.epss.download_epss", new_callable=AsyncMock)
+    @patch("debvulns.main.package.get_installed_packages")
+    @patch("debvulns.main.detect_suite")
+    @patch("debvulns.main.vulnerability.fetch_data", new_callable=AsyncMock)
     @pytest.mark.asyncio
     async def test_initialize_complete_failure(
         self, mock_fetch_data, mock_detect, mock_get_pkgs, mock_epss
@@ -426,7 +426,7 @@ class TestInitialize:
         ):
             await main.initialize()
 
-    @patch("debsecan_mcp.main.detect_suite")
+    @patch("debvulns.main.detect_suite")
     @pytest.mark.asyncio
     async def test_initialize_detect_suite_failure(self, mock_detect):
         mock_detect.side_effect = RuntimeError("No suite")
@@ -434,10 +434,10 @@ class TestInitialize:
         with pytest.raises(RuntimeError, match="No suite"):
             await main.initialize()
 
-    @patch("debsecan_mcp.main.epss.download_epss", new_callable=AsyncMock)
-    @patch("debsecan_mcp.main.package.get_installed_packages")
-    @patch("debsecan_mcp.main.detect_suite")
-    @patch("debsecan_mcp.main.vulnerability.fetch_data", new_callable=AsyncMock)
+    @patch("debvulns.main.epss.download_epss", new_callable=AsyncMock)
+    @patch("debvulns.main.package.get_installed_packages")
+    @patch("debvulns.main.detect_suite")
+    @patch("debvulns.main.vulnerability.fetch_data", new_callable=AsyncMock)
     @pytest.mark.asyncio
     async def test_initialize_other_errors(
         self, mock_fetch_data, mock_detect, mock_get_pkgs, mock_epss, caplog

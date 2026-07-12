@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from debsecan_mcp.epss import download_epss
+from debvulns.epss import download_epss
 
 
 class TestDownloadEpss:

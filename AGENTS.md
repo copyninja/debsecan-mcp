@@ -1,4 +1,4 @@
-# Agent Instructions for debsecan-mcp
+# Agent Instructions for debvulns
 
 ## Project Overview
 
@@ -41,8 +41,8 @@ uv build
 
 ## Key Files
 
-- `src/debsecan_mcp/main.py` - Main MCP server with tools
-- `src/debsecan_mcp/vulnerability.py` - Vulnerability data fetching and parsing
-- `src/debsecan_mcp/package.py` - Package detection
-- `src/debsecan_mcp/epss.py` - EPSS score fetching
+- `src/debvulns/main.py` - Main MCP server with tools
+- `src/debvulns/vulnerability.py` - Vulnerability data fetching and parsing
+- `src/debvulns/package.py` - Package detection
+- `src/debvulns/epss.py` - EPSS score fetching
 - `tests/` - Test files
