@@ -107,7 +107,7 @@ metadata.
 * **Type**: Gauge
 * **Value**: Always `1`
 * **Labels**:
-  * `version`: Version of the `debsecan-mcp` exporter.
+  * `version`: Version of the `debvulns` exporter.
   * `suite`: Debian suite codename (e.g., `bookworm`, `trixie`, `sid`, `generic`).
 * **Description**: Metadata about the exporter configuration.
 

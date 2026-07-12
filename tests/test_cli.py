@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from debsecan_mcp import cli
-from debsecan_mcp.package import Package, Version
-from debsecan_mcp.vulnerability import Vulnerability
+from debvulns import cli
+from debvulns.package import Package, Version
+from debvulns.vulnerability import Vulnerability
 from tests.conftest import requires_debian, requires_debsecan
 
 
@@ -174,10 +174,10 @@ def test_write_csv(capsys):
 
 
 @pytest.mark.asyncio
-@patch("debsecan_mcp.cli.detect_suite", return_value="bookworm")
-@patch("debsecan_mcp.cli.epss.download_epss", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.vulnerability.fetch_data", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.package.get_installed_packages")
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
 async def test_async_main_json_no_filter(
     mock_get_pkgs, mock_fetch_data, mock_download_epss, mock_detect, capsys, sample_packages, sample_vulnerabilities, sample_epss_data, mock_apt_pkg
 ):
@@ -202,10 +202,10 @@ async def test_async_main_json_no_filter(
 
 
 @pytest.mark.asyncio
-@patch("debsecan_mcp.cli.detect_suite", return_value="bookworm")
-@patch("debsecan_mcp.cli.epss.download_epss", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.vulnerability.fetch_data", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.package.get_installed_packages")
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
 async def test_async_main_severity_filter(
     mock_get_pkgs, mock_fetch_data, mock_download_epss, mock_detect, capsys, sample_packages, sample_vulnerabilities, sample_epss_data, mock_apt_pkg
 ):
@@ -229,10 +229,10 @@ async def test_async_main_severity_filter(
 
 
 @pytest.mark.asyncio
-@patch("debsecan_mcp.cli.detect_suite", return_value="bookworm")
-@patch("debsecan_mcp.cli.epss.download_epss", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.vulnerability.fetch_data", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.package.get_installed_packages")
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
 async def test_async_main_csv(
     mock_get_pkgs, mock_fetch_data, mock_download_epss, mock_detect, capsys, sample_packages, sample_vulnerabilities, sample_epss_data, mock_apt_pkg
 ):
@@ -254,10 +254,10 @@ async def test_async_main_csv(
 
 
 @pytest.mark.asyncio
-@patch("debsecan_mcp.cli.detect_suite", return_value="bookworm")
-@patch("debsecan_mcp.cli.epss.download_epss", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.vulnerability.fetch_data", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.package.get_installed_packages")
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
 async def test_async_main_caching_flow(
     mock_get_pkgs, mock_fetch_data, mock_download_epss, mock_detect, sample_packages, sample_vulnerabilities, sample_epss_data, mock_apt_pkg
 ):
@@ -311,10 +311,10 @@ def test_sort_vulnerabilities():
 
 
 @pytest.mark.asyncio
-@patch("debsecan_mcp.cli.detect_suite", return_value="bookworm")
-@patch("debsecan_mcp.cli.epss.download_epss", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.vulnerability.fetch_data", new_callable=AsyncMock)
-@patch("debsecan_mcp.cli.package.get_installed_packages")
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
 async def test_async_main_sorting(
     mock_get_pkgs, mock_fetch_data, mock_download_epss, mock_detect, capsys, sample_packages, sample_vulnerabilities, sample_epss_data, mock_apt_pkg
 ):

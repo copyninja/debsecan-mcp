@@ -1,25 +1,39 @@
-# debsecan-mcp
+# debvulns
 
 [![Tests](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/copyninja/debsecan-mcp/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/copyninja/debsecan-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/copyninja/debsecan-mcp)
 [![Built with opencode](https://img.shields.io/badge/Built%20with-opencode-5B4BFF.svg)](https://opencode.ai)
 
-A Model Context Protocol (MCP) server for Debian security vulnerability
-analysis. This server integrates with AI assistants (like Claude) to provide
-vulnerability scanning capabilities for Debian systems.
+Debian vulnerability analysis toolkit — MCP server, standalone CLI, and Prometheus exporter.
+Integrates with AI assistants (like Claude) and monitoring stacks (Prometheus + Grafana) to
+track, prioritize, and alert on package vulnerabilities across Debian systems.
+
+> [!NOTE]
+> This project was previously published on PyPI as `debsecan-mcp`. The final release under
+> that name is `0.1.5`. All future development happens here as `debvulns`.
 
 ## Features
 
-- **List Vulnerabilities**: Scan all installed packages on your Debian system
-  for known vulnerabilities
-- **CVE Research**: Get detailed information about specific CVEs including EPSS
-  scores
+- **MCP Server** (`debvulns-mcp`): Integrates with Claude Desktop, VSCode, and opencode for
+  AI-assisted vulnerability analysis
+- **Standalone CLI** (`debvulns`): Scan and report vulnerabilities from the command line in
+  JSON or CSV format
+- **Prometheus Exporter** (`debvulns-exporter`): Expose vulnerability metrics for Grafana
+  dashboards and alerting
+- **List Vulnerabilities**: Scan all installed packages for known vulnerabilities
+- **CVE Research**: Get detailed information about specific CVEs including EPSS scores
 - **Automatic Suite Detection**: Automatically detects your Debian suite
   (bookworm, trixie, sid, etc.)
 - **EPSS Integration**: Enriches vulnerability data with Exploit Prediction
   Scoring System (EPSS) scores
 
 ## Installation
+
+```bash
+pip install debvulns
+```
+
+Or from source:
 
 ```bash
 pip install -e .
@@ -30,19 +44,19 @@ pip install -e .
 ### Running the MCP Server
 
 ```bash
-debsecan-mcp
+debvulns-mcp
 ```
 
 Or with a specific Debian suite:
 
 ```bash
-DEBSECAN_SUITE=bookworm debsecan-mcp
+DEBSECAN_SUITE=bookworm debvulns-mcp
 ```
 
 ### Command Line Options
 
 ```bash
-debsecan-mcp --help
+debvulns-mcp --help
 ```
 
 Options:
@@ -58,7 +72,7 @@ Options:
 Used for direct integration with AI assistants like Claude Desktop or VSCode.
 
 ```bash
-debsecan-mcp --transport stdio
+debvulns-mcp --transport stdio
 ```
 
 #### HTTP Modes
@@ -67,10 +81,10 @@ For HTTP-based access, use `sse` or `streamable-http`:
 
 ```bash
 # SSE mode
-debsecan-mcp --transport sse --port 8080 --mount-path /mcp
+debvulns-mcp --transport sse --port 8080 --mount-path /mcp
 
 # Streamable HTTP mode
-debsecan-mcp --transport streamable-http --port 8080 --mount-path /mcp
+debvulns-mcp --transport streamable-http --port 8080 --mount-path /mcp
 ```
 
 Note: HTTP modes require running behind a web server. See [HTTP Server Setup](#http-server-setup) below.
@@ -84,14 +98,14 @@ The HTTP transport modes need to be served by a WSGI/ASGI server. Example with u
 pip install uvicorn
 
 # Run with stdio transport and wrap with uvicorn
-uvicorn debsecan_mcp.main:mcp_app --app-dir src --host 0.0.0.0 --port 8000 --path /mcp
+uvicorn debvulns.main:mcp_app --app-dir src --host 0.0.0.0 --port 8000 --path /mcp
 ```
 
 Or use the built-in development server:
 
 ```bash
 # SSE mode
-debsecan-mcp --transport sse --host 0.0.0.0 --port 8000 --mount-path /mcp
+debvulns-mcp --transport sse --host 0.0.0.0 --port 8000 --mount-path /mcp
 ```
 
 ### Standalone CLI Tool (`debvulns`)
@@ -166,8 +180,8 @@ To use this MCP server with VSCode and AI assistants:
 ```json
 {
   "mcpServers": {
-    "debsecan": {
-      "command": "debsecan-mcp",
+    "debvulns": {
+      "command": "debvulns-mcp",
       "args": [],
       "env": {
         "DEBSECAN_SUITE": "bookworm"
@@ -190,8 +204,8 @@ For local usage with opencode, use the default stdio transport:
 ```json
 {
   "mcpServers": {
-    "debsecan": {
-      "command": "debsecan-mcp",
+    "debvulns": {
+      "command": "debvulns-mcp",
       "args": ["--transport", "stdio"],
       "env": {
         "DEBSECAN_SUITE": "bookworm"
@@ -207,14 +221,14 @@ For remote or containerized setups, you can run the MCP server over HTTP:
 
 1. Start the server:
 ```bash
-debsecan-mcp --transport streamable-http --port 8080 --mount-path /mcp
+debvulns-mcp --transport streamable-http --port 8080 --mount-path /mcp
 ```
 
 2. Configure opencode to connect via HTTP:
 ```json
 {
   "mcpServers": {
-    "debsecan": {
+    "debvulns": {
       "url": "http://localhost:8080/mcp"
     }
   }

@@ -44,15 +44,15 @@ requires_debsecan = pytest.mark.skipif(
 def mock_apt_pkg(mocker):
     mock = MagicMock()
     mock.version_compare = lambda a, b: (1 if a > b else (-1 if a < b else 0))
-    mocker.patch("debsecan_mcp.package.apt_pkg", mock)
-    mocker.patch("debsecan_mcp.package._has_apt_pkg", True)
-    mocker.patch("debsecan_mcp.package.version_compare", mock.version_compare)
+    mocker.patch("debvulns.package.apt_pkg", mock)
+    mocker.patch("debvulns.package._has_apt_pkg", True)
+    mocker.patch("debvulns.package.version_compare", mock.version_compare)
     return mock
 
 
 @pytest.fixture
 def sample_packages():
-    from debsecan_mcp.package import Package, Version
+    from debvulns.package import Package, Version
 
     return [
         Package("bash", Version("5.2-2"), "bash", Version("5.2-2")),
@@ -63,7 +63,7 @@ def sample_packages():
 
 @pytest.fixture
 def sample_vulnerabilities():
-    from debsecan_mcp.vulnerability import Vulnerability
+    from debvulns.vulnerability import Vulnerability
 
     return [
         Vulnerability(

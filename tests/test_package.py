@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from debsecan_mcp.package import Package, Version, get_installed_packages
+from debvulns.package import Package, Version, get_installed_packages
 
 
 class TestVersion:
@@ -99,9 +99,9 @@ class TestGetInstalledPackages:
         mock_records.lookup = MagicMock()
 
         mock_cache.packages = [mock_pkg]
-        mocker.patch("debsecan_mcp.package.apt_pkg.Cache", return_value=mock_cache)
+        mocker.patch("debvulns.package.apt_pkg.Cache", return_value=mock_cache)
         mocker.patch(
-            "debsecan_mcp.package.apt_pkg.PackageRecords", return_value=mock_records
+            "debvulns.package.apt_pkg.PackageRecords", return_value=mock_records
         )
 
         packages = get_installed_packages()
@@ -110,8 +110,8 @@ class TestGetInstalledPackages:
         assert packages[0].name == "testpkg"
 
     def test_version_comparison_fallback_native(self, mocker):
-        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
-        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+        mocker.patch("debvulns.package._has_apt_pkg", False)
+        mocker.patch("debvulns.package.apt_pkg", None)
 
         # Test comparison using NativeVersion
         v1 = Version("1.0.0-1")
@@ -121,8 +121,8 @@ class TestGetInstalledPackages:
         assert v1 == Version("1.0.0-1")
 
     def test_get_installed_packages_fallback_dpkg_query(self, mocker):
-        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
-        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+        mocker.patch("debvulns.package._has_apt_pkg", False)
+        mocker.patch("debvulns.package.apt_pkg", None)
         mocker.patch("shutil.which", return_value=True)
 
         mock_stdout = "installed\tcurl\t8.5.0-1\tcurl\t8.5.0-1\ninstalled\tlibc6\t2.36-9+deb12u7\tglibc\t2.36-9\n"
@@ -145,8 +145,8 @@ class TestGetInstalledPackages:
         assert str(packages[1].source_version) == "2.36-9"
 
     def test_get_installed_packages_all_failed(self, mocker):
-        mocker.patch("debsecan_mcp.package._has_apt_pkg", False)
-        mocker.patch("debsecan_mcp.package.apt_pkg", None)
+        mocker.patch("debvulns.package._has_apt_pkg", False)
+        mocker.patch("debvulns.package.apt_pkg", None)
         mocker.patch("shutil.which", return_value=False)
 
         packages = get_installed_packages()

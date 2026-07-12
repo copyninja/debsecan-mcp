@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 def _get_version() -> str:
     try:
-        return importlib.metadata.version("debsecan-mcp")
+        return importlib.metadata.version("debvulns")
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
 

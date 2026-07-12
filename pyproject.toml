@@ -1,7 +1,7 @@
 [project]
-name = "debsecan-mcp"
-version = "0.1.4"
-description = "Debian Security Analyzer MCP Server"
+name = "debvulns"
+version = "0.2.0"
+description = "Debian Vulnerability Analyzer — MCP server, CLI, and Prometheus exporter"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -23,9 +23,9 @@ test = [
 ]
 
 [project.scripts]
-debsecan-mcp = "debsecan_mcp.main:main"
-debvulns = "debsecan_mcp.cli:main"
-debvulns-exporter = "debsecan_mcp.exporter_cli:main"
+debvulns-mcp = "debvulns.main:main"
+debvulns = "debvulns.cli:main"
+debvulns-exporter = "debvulns.exporter_cli:main"
 
 [build-system]
 requires = ["hatchling"]

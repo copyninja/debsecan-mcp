@@ -297,8 +297,8 @@ wheels = [
 ]
 
 [[package]]
-name = "debsecan-mcp"
-version = "0.1.4"
+name = "debvulns"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
