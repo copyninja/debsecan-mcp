@@ -157,9 +157,19 @@ class Package:
 
     @classmethod
     def from_apt_pkg(
-        cls, pkg: "apt_pkg.Package", records: "apt_pkg.PackageRecords"
+        cls,
+        pkg: "apt_pkg.Package",
+        records: "apt_pkg.PackageRecords",
+        policy: "apt_pkg.Policy",
     ) -> "Package":
-        """Create a Package from an apt_pkg.Package with a current version."""
+        """Create a Package from an apt_pkg.Package with a current version.
+
+        The installed version's PackageFile entry sometimes lacks origin/archive
+        metadata when a newer candidate is available in a known repository (APT
+        stores the origin on the *candidate* entry, not the locally-cached one).
+        In that case the Policy candidate version is consulted as a fallback to
+        recover the correct origin/archive without altering the installed version.
+        """
         ver = pkg.current_ver
         pkg_version = ver.ver_str
         pkg_source = pkg.name
@@ -176,6 +186,24 @@ class Package:
 
         pkg_origin: str = getattr(pf, "origin", "") or ""
         pkg_archive: str = getattr(pf, "archive", "") or ""
+
+        # When origin is empty the installed version's PackageFile has no repo
+        # metadata (typically archive='now' for a pending upgrade).  If a newer
+        # candidate exists in a known repository, borrow its origin/archive to
+        # correctly classify the package's provenance.
+        if not pkg_origin:
+            candidate_ver = policy.get_candidate_ver(pkg)
+            if candidate_ver is not None and candidate_ver > ver:
+                logger.debug(
+                    "Using candidate ver %s to resolve origin for %s (installed %s)",
+                    candidate_ver.ver_str,
+                    pkg.name,
+                    ver.ver_str,
+                )
+                cpf, cidx = candidate_ver.file_list[0]
+                records.lookup((cpf, cidx))
+                pkg_origin = getattr(cpf, "origin", "") or ""
+                pkg_archive = getattr(cpf, "archive", "") or ""
 
         return cls(
             pkg.name,
@@ -197,11 +225,12 @@ def get_installed_packages() -> list[Package]:
     if _has_apt_pkg and apt_pkg is not None:
         try:
             cache = apt_pkg.Cache(progress=None)
+            policy = apt_pkg.Policy(cache)
             records = apt_pkg.PackageRecords(cache)
             for pkg in cache.packages:
                 if pkg.current_ver:
                     try:
-                        packages.append(Package.from_apt_pkg(pkg, records))
+                        packages.append(Package.from_apt_pkg(pkg, records, policy))
                     except ValueError as e:
                         logger.warning(
                             "Invalid version for package %s: %s", pkg.name, e

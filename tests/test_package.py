@@ -137,11 +137,15 @@ class TestGetInstalledPackages:
         mock_records.source_ver = "1.0.0"
         mock_records.lookup = MagicMock()
 
+        mock_policy = MagicMock()
+        mock_policy.get_candidate_ver.return_value = None
+
         mock_cache.packages = [mock_pkg]
         mocker.patch("debvulns.package.apt_pkg.Cache", return_value=mock_cache)
         mocker.patch(
             "debvulns.package.apt_pkg.PackageRecords", return_value=mock_records
         )
+        mocker.patch("debvulns.package.apt_pkg.Policy", return_value=mock_policy)
 
         packages = get_installed_packages()
         assert isinstance(packages, list)
@@ -150,6 +154,98 @@ class TestGetInstalledPackages:
         assert packages[0].origin == "Debian"
         assert packages[0].archive == "bookworm"
         assert packages[0].is_debian_origin is True
+
+    @pytest.mark.usefixtures("mock_apt_pkg")
+    def test_origin_from_candidate_version(self, mocker):
+        """When installed ver has no origin (archive='now'), the candidate's
+        origin/archive are used to correctly classify the package."""
+        mock_cache = MagicMock()
+        mock_pkg = MagicMock()
+        mock_pkg.name = "curl"
+
+        # Installed version — no origin metadata (e.g. pending upgrade)
+        installed_ver = MagicMock()
+        installed_ver.ver_str = "8.5.0-1"
+        installed_pf = MagicMock()
+        installed_pf.origin = ""
+        installed_pf.archive = "now"
+        installed_ver.file_list = [(installed_pf, 0)]
+        mock_pkg.current_ver = installed_ver
+
+        # Candidate version — has real Debian origin metadata
+        candidate_ver = MagicMock()
+        candidate_ver.ver_str = "8.5.0-2"
+        candidate_pf = MagicMock()
+        candidate_pf.origin = "Debian"
+        candidate_pf.archive = "bookworm"
+        candidate_ver.file_list = [(candidate_pf, 0)]
+        # candidate > installed
+        candidate_ver.__gt__ = lambda self, other: True
+
+        mock_policy = MagicMock()
+        mock_policy.get_candidate_ver.return_value = candidate_ver
+
+        mock_records = MagicMock()
+        mock_records.source_pkg = "curl"
+        mock_records.source_ver = "8.5.0-1"
+        mock_records.lookup = MagicMock()
+
+        mock_cache.packages = [mock_pkg]
+        mocker.patch("debvulns.package.apt_pkg.Cache", return_value=mock_cache)
+        mocker.patch(
+            "debvulns.package.apt_pkg.PackageRecords", return_value=mock_records
+        )
+        mocker.patch("debvulns.package.apt_pkg.Policy", return_value=mock_policy)
+
+        packages = get_installed_packages()
+        assert len(packages) == 1
+        pkg = packages[0]
+        assert pkg.name == "curl"
+        # Origin/archive should come from the candidate, not the installed ver
+        assert pkg.origin == "Debian"
+        assert pkg.archive == "bookworm"
+        assert pkg.is_debian_origin is True
+        # Installed version string must remain unchanged
+        assert str(pkg.version) == "8.5.0-1"
+
+    @pytest.mark.usefixtures("mock_apt_pkg")
+    def test_candidate_none_handled_safely(self, mocker):
+        """When get_candidate_ver returns None (no candidate), no crash occurs
+        and the package is treated as unknown origin (defaults to Debian)."""
+        mock_cache = MagicMock()
+        mock_pkg = MagicMock()
+        mock_pkg.name = "localpkg"
+
+        installed_ver = MagicMock()
+        installed_ver.ver_str = "1.0.0"
+        installed_pf = MagicMock()
+        installed_pf.origin = ""
+        installed_pf.archive = ""
+        installed_ver.file_list = [(installed_pf, 0)]
+        mock_pkg.current_ver = installed_ver
+
+        mock_policy = MagicMock()
+        mock_policy.get_candidate_ver.return_value = None
+
+        mock_records = MagicMock()
+        mock_records.source_pkg = ""
+        mock_records.source_ver = ""
+        mock_records.lookup = MagicMock()
+
+        mock_cache.packages = [mock_pkg]
+        mocker.patch("debvulns.package.apt_pkg.Cache", return_value=mock_cache)
+        mocker.patch(
+            "debvulns.package.apt_pkg.PackageRecords", return_value=mock_records
+        )
+        mocker.patch("debvulns.package.apt_pkg.Policy", return_value=mock_policy)
+
+        packages = get_installed_packages()
+        assert len(packages) == 1
+        pkg = packages[0]
+        assert pkg.origin == ""
+        assert pkg.archive == ""
+        # Both empty → safe default is True (treat as Debian)
+        assert pkg.is_debian_origin is True
 
     def test_version_comparison_fallback_native(self, mocker):
         mocker.patch("debvulns.package._has_apt_pkg", False)
