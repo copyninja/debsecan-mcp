@@ -83,6 +83,26 @@ class Version:
         return self.compare(other) != 0
 
 
+# Known Debian archive names used to identify Debian-sourced packages.
+_DEBIAN_ARCHIVES: frozenset[str] = frozenset(
+    {
+        "stable",
+        "testing",
+        "unstable",
+        "sid",
+        "experimental",
+        "bookworm",
+        "bullseye",
+        "buster",
+        "stretch",
+        "jessie",
+        "wheezy",
+        "trixie",
+        "forky",
+    }
+)
+
+
 class Package:
     def __init__(
         self,
@@ -90,16 +110,49 @@ class Package:
         version: Version,
         source: str | None = None,
         source_version: Version | None = None,
+        origin: str = "",
+        archive: str = "",
     ):
         self.name = name
         self.version = version
         self.source = source or name
         self.source_version = source_version or version
+        # Origin metadata from apt_pkg.PackageFile; empty when unknown
+        # (e.g. dpkg-query fallback path).
+        self.origin = origin
+        self.archive = archive
+
+    @property
+    def is_debian_origin(self) -> bool:
+        """Return True if the package demonstrably comes from the Debian archive.
+
+        Detection relies on apt_pkg metadata (origin / archive fields from
+        PackageFile).  When both are empty (dpkg-query fallback, or locally
+        built packages that were never registered in any APT source list) the
+        method returns True so that those packages are still scanned by the
+        Debian Security Tracker — this is the safe default that avoids missing
+        real vulnerabilities.
+
+        A package is considered *non*-Debian when:
+        - origin is explicitly non-empty and different from "Debian", OR
+        - archive is "now" (installed locally / outside any APT repo) and
+          origin is empty.
+        """
+        if self.origin == "Debian":
+            return True
+        if self.archive in _DEBIAN_ARCHIVES:
+            return True
+        # Both empty → origin unknown (dpkg-query path) → treat as Debian
+        if not self.origin and not self.archive:
+            return True
+        # archive == "now" with empty origin → locally installed / third-party
+        return False
 
     def __repr__(self):
         return (
             f"Package(name={self.name!r}, version={self.version!r}, "
-            f"source={self.source!r}, source_version={self.source_version!r})"
+            f"source={self.source!r}, source_version={self.source_version!r}, "
+            f"origin={self.origin!r}, archive={self.archive!r})"
         )
 
     @classmethod
@@ -112,7 +165,8 @@ class Package:
         pkg_source = pkg.name
         pkg_source_version = pkg_version
 
-        # Look up the package record to extract source package info
+        # Look up the package record to extract source package info and
+        # origin metadata from the APT package file entry.
         pf, idx = ver.file_list[0]
         records.lookup((pf, idx))
         if records.source_pkg:
@@ -120,11 +174,16 @@ class Package:
         if records.source_ver:
             pkg_source_version = records.source_ver
 
+        pkg_origin: str = getattr(pf, "origin", "") or ""
+        pkg_archive: str = getattr(pf, "archive", "") or ""
+
         return cls(
             pkg.name,
             Version(pkg_version),
             pkg_source,
             Version(pkg_source_version),
+            origin=pkg_origin,
+            archive=pkg_archive,
         )
 
 

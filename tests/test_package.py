@@ -83,6 +83,42 @@ class TestPackage:
         assert "1.0.0" in repr(pkg)
 
 
+class TestPackageOrigin:
+    def test_is_debian_origin_explicit_debian(self):
+        """origin == 'Debian' → always Debian."""
+        pkg = Package("apt", Version("3.3.1"), origin="Debian", archive="unstable")
+        assert pkg.is_debian_origin is True
+
+    def test_is_debian_origin_known_suite_archive(self):
+        """Known suite in archive field without origin → Debian."""
+        for suite in ("bookworm", "bullseye", "buster", "sid", "unstable", "stable", "testing", "trixie"):
+            pkg = Package("curl", Version("8.5.0"), archive=suite)
+            assert pkg.is_debian_origin is True, f"Expected Debian for archive={suite!r}"
+
+    def test_is_not_debian_origin_third_party(self):
+        """archive='now' and empty origin → third-party / locally installed."""
+        pkg = Package("grafana", Version("13.1.0"), origin="", archive="now")
+        assert pkg.is_debian_origin is False
+
+    def test_is_debian_origin_unknown_defaults_to_true(self):
+        """Both origin and archive empty (dpkg-query fallback) → treat as Debian."""
+        pkg = Package("somelocalpkg", Version("1.0"))
+        assert pkg.origin == ""
+        assert pkg.archive == ""
+        assert pkg.is_debian_origin is True
+
+    def test_is_not_debian_non_empty_non_debian_origin(self):
+        """Non-empty origin that is not 'Debian' → not Debian origin."""
+        pkg = Package("grafana", Version("13.1.0"), origin="Grafana Labs", archive="now")
+        assert pkg.is_debian_origin is False
+
+    def test_package_default_origin_fields(self):
+        """Default constructor leaves origin/archive as empty strings."""
+        pkg = Package("foo", Version("1.0"))
+        assert pkg.origin == ""
+        assert pkg.archive == ""
+
+
 class TestGetInstalledPackages:
     @pytest.mark.usefixtures("mock_apt_pkg")
     def test_get_installed_packages_returns_list(self, mocker):
@@ -90,7 +126,10 @@ class TestGetInstalledPackages:
         mock_pkg = MagicMock()
         mock_pkg.current_ver = MagicMock()
         mock_pkg.current_ver.ver_str = "1.0.0"
-        mock_pkg.current_ver.file_list = [(MagicMock(), 0)]
+        mock_pf = MagicMock()
+        mock_pf.origin = "Debian"
+        mock_pf.archive = "bookworm"
+        mock_pkg.current_ver.file_list = [(mock_pf, 0)]
         mock_pkg.name = "testpkg"
 
         mock_records = MagicMock()
@@ -108,6 +147,9 @@ class TestGetInstalledPackages:
         assert isinstance(packages, list)
         assert len(packages) == 1
         assert packages[0].name == "testpkg"
+        assert packages[0].origin == "Debian"
+        assert packages[0].archive == "bookworm"
+        assert packages[0].is_debian_origin is True
 
     def test_version_comparison_fallback_native(self, mocker):
         mocker.patch("debvulns.package._has_apt_pkg", False)

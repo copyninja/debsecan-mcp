@@ -33,7 +33,7 @@ import tempfile
 import threading
 import time
 
-from . import epss, package, vulnerability
+from . import epss, osv, package, vulnerability
 from .cache import Cache, ScanResult
 
 logger = logging.getLogger(__name__)
@@ -208,9 +208,20 @@ async def _run_scan(
     logger.info("Reading installed packages")
     installed_packages = package.get_installed_packages()
 
-    # --- 4. Match vulnerabilities against installed packages ----------------
+    # Split by origin: only Debian-sourced packages go through the Debian feed.
+    debian_pkgs = [p for p in installed_packages if p.is_debian_origin]
+    non_debian_pkgs = [p for p in installed_packages if not p.is_debian_origin]
+
+    if non_debian_pkgs:
+        logger.info(
+            "Skipping %d non-Debian package(s) from Debian feed scan: %s",
+            len(non_debian_pkgs),
+            [p.name for p in non_debian_pkgs],
+        )
+
+    # --- 4. Match vulnerabilities against Debian-origin packages only -------
     detected: list[vulnerability.Vulnerability] = []
-    for pkg in installed_packages:
+    for pkg in debian_pkgs:
         relevant = vuln_feed.get(pkg.source) or vuln_feed.get(pkg.name, [])
         for v in relevant:
             if v.is_vulnerable(pkg):
@@ -228,6 +239,36 @@ async def _run_scan(
         key = (v.bug_id, v.installed_package)  # type: ignore[arg-type]
         if key not in unique:
             unique[key] = v
+
+    # --- 5b. OSV cross-check for non-Debian packages ------------------------
+    if non_debian_pkgs:
+        try:
+            osv_results = await osv.check_non_debian_packages(
+                non_debian_pkgs, vuln_feed, epss_data
+            )
+            for entry in osv_results:
+                cve_id = entry["cve"]
+                pkg_name = entry["package"]
+                key = (cve_id, pkg_name)
+                if key not in unique:
+                    v_osv = vulnerability.Vulnerability(
+                        bug_id=cve_id,
+                        package=pkg_name,
+                        description=entry["description"],
+                        unstable_version="",
+                        other_versions=[],
+                        is_binary=False,
+                        urgency=entry["urgency"],
+                        remote=None,
+                        fix_available=True,
+                    )
+                    v_osv.epss_score = entry["epss_score"]
+                    v_osv.epss_percentile = entry["epss_percentile"]
+                    v_osv.installed_package = pkg_name
+                    v_osv.installed_version = None
+                    unique[key] = v_osv
+        except Exception as exc:
+            logger.error("OSV cross-check failed in refresh pipeline: %s", exc)
 
     # --- 6. Categorise -------------------------------------------------------
     categorized = vulnerability.categorise_vulnerabilities(list(unique.values()))
