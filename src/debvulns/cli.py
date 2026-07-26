@@ -289,7 +289,7 @@ async def async_main():
     non_debian_pkgs = [p for p in installed_packages if not p.is_debian_origin]
 
     if non_debian_pkgs:
-        logger.debug(
+        logger.info(
             "Skipping %d non-Debian package(s) from Debian feed: %s",
             len(non_debian_pkgs),
             [p.name for p in non_debian_pkgs],
