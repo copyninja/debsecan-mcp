@@ -199,7 +199,7 @@
       "type": "stat"
     },
     {
-      "description": "Total number of vulnerabilities currently affecting the system.",
+      "description": "Number of distinct CVE identifiers across all selected instances (fleet-wide unique). A single CVE affecting multiple hosts is counted once here. Multiply by number of monitored assets to estimate total remediation workload across the fleet.",
       "fieldConfig": {
         "defaults": {
           "thresholds": {
@@ -253,16 +253,16 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(debvulns_vulnerabilities_total{instance=~\"^$instance$\"})",
+          "expr": "count(group by (cve) (debvulns_vulnerability_info{instance=~\"^$instance$\"}))",
           "instant": true,
           "refId": "A"
         }
       ],
-      "title": "Total CVEs",
+      "title": "Unique CVEs",
       "type": "stat"
     },
     {
-      "description": "CVEs with critical or high severity — highest priority to address.",
+      "description": "Distinct critical or high severity CVEs across selected instances (fleet-wide unique). Each CVE is counted once regardless of how many hosts are affected — these are the highest priority to remediate.",
       "fieldConfig": {
         "defaults": {
           "thresholds": {
@@ -308,7 +308,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(debvulns_vulnerabilities_total{severity=~\"critical|high\", instance=~\"^$instance$\"})",
+          "expr": "count(group by (cve) (debvulns_vulnerability_info{severity=~\"critical|high\", instance=~\"^$instance$\"}))",
           "instant": true,
           "refId": "A"
         }
@@ -317,7 +317,7 @@
       "type": "stat"
     },
     {
-      "description": "CVEs for which a Debian patch has already been released.",
+      "description": "Distinct CVEs where a Debian patch has been released, counted fleet-wide (unique). Each CVE counted once regardless of number of affected hosts. Act on these first.",
       "fieldConfig": {
         "defaults": {
           "thresholds": {
@@ -363,7 +363,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(debvulns_vulnerabilities_total{fix_available=\"true\", instance=~\"^$instance$\"})",
+          "expr": "count(group by (cve) (debvulns_vulnerability_info{fix_available=\"true\", instance=~\"^$instance$\"}))",
           "instant": true,
           "refId": "A"
         }
@@ -1017,6 +1017,280 @@
               "instance": "Instance",
               "suite": "Suite",
               "version": "Exporter Version"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 16,
+      "title": "Package & Instance Summary",
+      "type": "row"
+    },
+    {
+      "description": "Number of distinct CVE identifiers per monitored instance. Use this to compare vulnerability exposure across hosts and identify which assets carry the highest unique CVE burden.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Instance"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unique CVEs"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green"
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "orange",
+                      "value": 30
+                    },
+                    {
+                      "color": "red",
+                      "value": 60
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 34
+      },
+      "id": 17,
+      "options": {
+        "footer": {
+          "countRows": false,
+          "enablePagination": false,
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Unique CVEs"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count by (instance) (count by (cve, instance) (debvulns_vulnerability_info{instance=~\"^$instance$\"}))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Unique CVEs per Instance",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true
+            },
+            "renameByName": {
+              "instance": "Instance",
+              "Value": "Unique CVEs"
+            },
+            "indexByName": {
+              "instance": 0,
+              "Value": 1
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "description": "All packages with at least one active CVE, ranked by number of distinct CVEs per instance. Use this to prioritise which packages to upgrade first — higher CVE count = broader attack surface for that package.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Package"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 220
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Instance"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CVE Count"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "blue"
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 5
+                    },
+                    {
+                      "color": "orange",
+                      "value": 15
+                    },
+                    {
+                      "color": "red",
+                      "value": 30
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 16,
+        "x": 8,
+        "y": 34
+      },
+      "id": 18,
+      "options": {
+        "footer": {
+          "countRows": false,
+          "enablePagination": true,
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "CVE Count"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count by (package, instance) (debvulns_vulnerability_info{instance=~\"^$instance$\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Affected Packages by CVE Count",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true
+            },
+            "renameByName": {
+              "package": "Package",
+              "instance": "Instance",
+              "Value": "CVE Count"
+            },
+            "indexByName": {
+              "package": 0,
+              "instance": 1,
+              "Value": 2
             }
           }
         }
