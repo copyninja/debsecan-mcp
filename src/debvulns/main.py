@@ -4,13 +4,13 @@ import copy
 import logging
 import os
 
-from mcp.server.fastmcp import FastMCP
-
 from . import epss, osv, package, vulnerability
 
 
-def create_mcp(transport: str, host: str, port: int, mount_path: str) -> FastMCP:
+def create_mcp(transport: str, host: str, port: int, mount_path: str):
     """Create FastMCP instance based on transport type."""
+    from mcp.server.fastmcp import FastMCP  # lazy import — not needed by exporter
+
     if transport == "stdio":
         return FastMCP("DebSecCan")
     elif transport == "sse":

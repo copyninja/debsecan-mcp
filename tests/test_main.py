@@ -360,19 +360,19 @@ class TestDebsecanIntegration:
 
 
 class TestCreateMcp:
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_stdio(self, mock_fastmcp):
         main.create_mcp("stdio", "0.0.0.0", 8000, "/mcp")
         mock_fastmcp.assert_called_once_with("DebSecCan")
 
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_sse(self, mock_fastmcp):
         main.create_mcp("sse", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(
             "DebSecCan", host="127.0.0.1", port=9000, sse_path="/test"
         )
 
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_streamable_http(self, mock_fastmcp):
         main.create_mcp("streamable-http", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(
