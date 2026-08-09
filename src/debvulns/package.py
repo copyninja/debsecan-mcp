@@ -184,8 +184,8 @@ class Package:
         if records.source_ver:
             pkg_source_version = records.source_ver
 
-        pkg_origin: str = getattr(pf, "origin", "") or ""
-        pkg_archive: str = getattr(pf, "archive", "") or ""
+        pkg_origin: str = getattr(pf, "origin", "")
+        pkg_archive: str = getattr(pf, "archive", "")
 
         # When origin is empty the installed version's PackageFile has no repo
         # metadata (typically archive='now' for a pending upgrade).  If a newer
@@ -202,8 +202,8 @@ class Package:
                 )
                 cpf, cidx = candidate_ver.file_list[0]
                 records.lookup((cpf, cidx))
-                pkg_origin = getattr(cpf, "origin", "") or ""
-                pkg_archive = getattr(cpf, "archive", "") or ""
+                pkg_origin = getattr(cpf, "origin", "")
+                pkg_archive = getattr(cpf, "archive", "")
 
         return cls(
             pkg.name,
