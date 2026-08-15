@@ -5,7 +5,7 @@ description = "Debian Vulnerability Analyzer — MCP server, CLI, and Prometheus
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp[cli]>=1.2.0",
+    "mcp[cli]>=1.2.0,<2.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
