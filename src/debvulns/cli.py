@@ -192,8 +192,21 @@ async def async_main():
         dest="cache_max_age",
         metavar="SECS",
         help=(
-            "Maximum age in seconds for cached data before re-downloading "
-            "(default: 86400 = 24 h). Ignored when --no-cache is set."
+            "Maximum age in seconds for EPSS and Debian vulnerability cache "
+            "before re-downloading (default: 86400 = 24 h). "
+            "Ignored when --no-cache is set."
+        ),
+    )
+    parser.add_argument(
+        "--osv-cache-max-age",
+        type=int,
+        default=604800,
+        dest="osv_cache_max_age",
+        metavar="SECS",
+        help=(
+            "Maximum age in seconds for the OSV results cache before "
+            "re-querying OSV.dev (default: 604800 = 7 days). "
+            "Ignored when --no-cache is set."
         ),
     )
     parser.add_argument(
@@ -226,6 +239,7 @@ async def async_main():
 
     use_cache = not args.no_cache
     cache_max_age = float(args.cache_max_age)
+    osv_cache_max_age = float(args.osv_cache_max_age)
     cache_dir = None
     if use_cache:
         cache_dir = get_cache_dir(args.cache_dir)
@@ -335,7 +349,7 @@ async def async_main():
         osv_results: list[dict] = []
 
         # Try loading from cache first.
-        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path, cache_max_age):
+        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path, osv_cache_max_age):
             logger.debug(f"Loading OSV results from cache: {osv_cache_path}")
             try:
                 with open(osv_cache_path) as f:

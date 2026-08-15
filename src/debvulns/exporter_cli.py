@@ -94,6 +94,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Override the EPSS CSV data URL.",
     )
     parser.add_argument(
+        "--osv-cache-max-age",
+        type=int,
+        default=604800,
+        dest="osv_cache_max_age",
+        metavar="SECS",
+        help=(
+            "Maximum age in seconds for the OSV results cache before "
+            "re-querying OSV.dev (default: 604800 = 7 days). "
+            "Ignored when --no-cache is set."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -143,6 +155,7 @@ def main(argv: list[str] | None = None) -> None:
         vuln_url=args.vuln_url,
         epss_url=args.epss_url,
         cache_dir=cache_dir,
+        osv_cache_max_age=float(args.osv_cache_max_age),
     )
     refresher.start()
     logger.info(
