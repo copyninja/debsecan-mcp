@@ -72,11 +72,12 @@ def get_cache_dir(configured_dir: str) -> str | None:
     return None
 
 
-def is_cache_valid(cache_file: str) -> bool:
+def is_cache_valid(cache_file: str, max_age: float = 86400.0) -> bool:
+    """Return True if *cache_file* exists and is younger than *max_age* seconds."""
     if not os.path.exists(cache_file):
         return False
     mtime = os.path.getmtime(cache_file)
-    return (time.time() - mtime) < 24 * 3600
+    return (time.time() - mtime) < max_age
 
 
 def format_vuln_dict(v: Vulnerability, severity: str) -> dict:
@@ -185,6 +186,17 @@ async def async_main():
         ),
     )
     parser.add_argument(
+        "--cache-max-age",
+        type=int,
+        default=86400,
+        dest="cache_max_age",
+        metavar="SECS",
+        help=(
+            "Maximum age in seconds for cached data before re-downloading "
+            "(default: 86400 = 24 h). Ignored when --no-cache is set."
+        ),
+    )
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Do not use cached data, force downloading and parsing",
@@ -213,6 +225,7 @@ async def async_main():
         sys.exit(1)
 
     use_cache = not args.no_cache
+    cache_max_age = float(args.cache_max_age)
     cache_dir = None
     if use_cache:
         cache_dir = get_cache_dir(args.cache_dir)
@@ -230,7 +243,7 @@ async def async_main():
 
     # Load EPSS
     epss_data = None
-    if use_cache and is_cache_valid(epss_cache_path):
+    if use_cache and is_cache_valid(epss_cache_path, cache_max_age):
         logger.debug(f"Loading EPSS from cache: {epss_cache_path}")
         try:
             with open(epss_cache_path) as f:
@@ -254,7 +267,7 @@ async def async_main():
 
     # Load Vulnerabilities
     vuln_feed = None
-    if use_cache and is_cache_valid(vuln_cache_path):
+    if use_cache and is_cache_valid(vuln_cache_path, cache_max_age):
         logger.debug(f"Loading vulnerabilities from cache: {vuln_cache_path}")
         try:
             with open(vuln_cache_path) as f:
@@ -322,7 +335,7 @@ async def async_main():
         osv_results: list[dict] = []
 
         # Try loading from cache first.
-        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path):
+        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path, cache_max_age):
             logger.debug(f"Loading OSV results from cache: {osv_cache_path}")
             try:
                 with open(osv_cache_path) as f:

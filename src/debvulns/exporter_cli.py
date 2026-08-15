@@ -65,12 +65,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--cache-dir",
-        default="/var/cache/debvulns-exporter",
+        default="/var/cache/debvulns",
         dest="cache_dir",
         metavar="DIR",
         help=(
             "Directory used for warm-start disk cache of downloaded data "
-            "(default: /var/cache/debvulns-exporter). Disable with --no-cache."
+            "(default: /var/cache/debvulns). Disable with --no-cache."
         ),
     )
     parser.add_argument(

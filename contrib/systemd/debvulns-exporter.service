@@ -12,7 +12,7 @@ Type=simple
 ExecStart=/usr/local/bin/debvulns-exporter \
     --port 9222 \
     --refresh-interval 86400 \
-    --cache-dir /var/cache/debvulns-exporter
+    --cache-dir /var/cache/debvulns
 Restart=on-failure
 RestartSec=30s
 User=debvulns
@@ -25,7 +25,7 @@ PrivateTmp=true
 # ReadWritePaths carves out the one directory we actually need.
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/cache/debvulns-exporter
+ReadWritePaths=/var/cache/debvulns
 
 # ---- Logging ----
 StandardOutput=journal
