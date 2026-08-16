@@ -166,6 +166,93 @@ class TestListVulnerabilities:
                     assert cve_ids.count("CVE-2024-1234") == 1
 
 
+
+    @pytest.mark.asyncio
+    async def test_non_debian_packages_excluded_from_debian_scan(
+        self, sample_packages, sample_non_debian_packages, sample_epss_data, mocker
+    ):
+        """Non-Debian packages must not be fed into the Debian Security Tracker loop."""
+        all_packages = sample_packages + sample_non_debian_packages
+
+        from debvulns.vulnerability import Vulnerability
+
+        grafana_debian_vuln = MagicMock(spec=Vulnerability)
+        grafana_debian_vuln.bug_id = "CVE-2021-39226"
+        grafana_debian_vuln.package = "grafana"
+        grafana_debian_vuln.is_vulnerable = MagicMock(return_value=True)
+
+        mock_feed = {"grafana": [grafana_debian_vuln]}
+
+        mocker.patch(
+            "debvulns.main.osv.check_non_debian_packages",
+            new_callable=AsyncMock,
+            return_value=[],
+        )
+
+        with patch("debvulns.main.installed_packages", all_packages):
+            with patch("debvulns.main.vulnerability_feed", mock_feed):
+                with patch("debvulns.main.epss_data", sample_epss_data):
+                    await list_vulnerabilities()
+
+        # grafana is non-Debian so is_vulnerable should NOT have been called
+        grafana_debian_vuln.is_vulnerable.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_osv_results_merged_into_output(
+        self, sample_packages, sample_non_debian_packages, sample_epss_data, mocker
+    ):
+        """OSV-confirmed vulnerabilities appear in the final output."""
+        all_packages = sample_packages + sample_non_debian_packages
+
+        osv_entry = {
+            "cve": "CVE-2021-39226",
+            "package": "grafana",
+            "installed_version": "8.1.5",
+            "urgency": "medium",
+            "epss_score": 0.42,
+            "epss_percentile": 0.87,
+            "fix_available": "Yes",
+            "remote": "Unknown",
+            "description": "Grafana snapshot issue",
+            "source": "osv.dev",
+        }
+        mocker.patch(
+            "debvulns.main.osv.check_non_debian_packages",
+            new_callable=AsyncMock,
+            return_value=[osv_entry],
+        )
+
+        with patch("debvulns.main.installed_packages", all_packages):
+            with patch("debvulns.main.vulnerability_feed", {}):
+                with patch("debvulns.main.epss_data", sample_epss_data):
+                    result = await list_vulnerabilities()
+
+        all_cves: set[str] = set()
+        for cves in result.values():
+            all_cves.update(cves)
+
+        assert "CVE-2021-39226" in all_cves
+
+    @pytest.mark.asyncio
+    async def test_osv_failure_does_not_crash(
+        self, sample_packages, sample_non_debian_packages, sample_epss_data, mocker
+    ):
+        """A failure in OSV cross-check is logged but does not abort the scan."""
+        all_packages = sample_packages + sample_non_debian_packages
+
+        mocker.patch(
+            "debvulns.main.osv.check_non_debian_packages",
+            new_callable=AsyncMock,
+            side_effect=Exception("OSV network failure"),
+        )
+
+        with patch("debvulns.main.installed_packages", all_packages):
+            with patch("debvulns.main.vulnerability_feed", {}):
+                with patch("debvulns.main.epss_data", sample_epss_data):
+                    result = await list_vulnerabilities()
+
+        assert isinstance(result, (dict, str))
+
 class TestResearchCves:
     @pytest.mark.asyncio
     async def test_research_cves_found(self, sample_packages, mock_vulnerability_feed):
@@ -273,19 +360,19 @@ class TestDebsecanIntegration:
 
 
 class TestCreateMcp:
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_stdio(self, mock_fastmcp):
         main.create_mcp("stdio", "0.0.0.0", 8000, "/mcp")
         mock_fastmcp.assert_called_once_with("DebSecCan")
 
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_sse(self, mock_fastmcp):
         main.create_mcp("sse", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(
             "DebSecCan", host="127.0.0.1", port=9000, sse_path="/test"
         )
 
-    @patch("debvulns.main.FastMCP")
+    @patch("mcp.server.fastmcp.FastMCP")
     def test_create_mcp_streamable_http(self, mock_fastmcp):
         main.create_mcp("streamable-http", "127.0.0.1", 9000, "/test")
         mock_fastmcp.assert_called_once_with(

@@ -4,13 +4,13 @@ import copy
 import logging
 import os
 
-from mcp.server.fastmcp import FastMCP
-
-from . import epss, package, vulnerability
+from . import epss, osv, package, vulnerability
 
 
-def create_mcp(transport: str, host: str, port: int, mount_path: str) -> FastMCP:
+def create_mcp(transport: str, host: str, port: int, mount_path: str):
     """Create FastMCP instance based on transport type."""
+    from mcp.server.fastmcp import FastMCP  # lazy import — not needed by exporter
+
     if transport == "stdio":
         return FastMCP("DebSecCan")
     elif transport == "sse":
@@ -73,6 +73,11 @@ async def list_vulnerabilities(suite: str | None = None):
     """
     Lists all vulnerabilities affecting the currently installed packages on the system.
     Categorises them by severity and EPSS score.
+
+    Packages that do not originate from the Debian archive are excluded from
+    the Debian Security Tracker scan (which would produce false positives for
+    them) and are instead cross-checked against the OSV.dev database using the
+    CVE IDs discovered in the Debian feed.
     """
     logger.info("Listing vulnerabilities...")
 
@@ -82,9 +87,22 @@ async def list_vulnerabilities(suite: str | None = None):
     else:
         vulns_by_pkg = vulnerability_feed
 
+    # Split packages by origin: only Debian-sourced packages are checked
+    # against the Debian Security Tracker feed.
+    debian_pkgs = [p for p in installed_packages if p.is_debian_origin]
+    non_debian_pkgs = [p for p in installed_packages if not p.is_debian_origin]
+
+    if non_debian_pkgs:
+        logger.info(
+            "Skipping %d non-Debian package(s) from Debian feed scan: %s",
+            len(non_debian_pkgs),
+            [p.name for p in non_debian_pkgs],
+        )
+
     detected_vulnerabilities = []
 
-    for pkg in installed_packages:
+    # --- Phase 1: Debian Security Tracker scan ---
+    for pkg in debian_pkgs:
         # Try source package first, fallback to binary package (matching debsecan logic)
         # debsecan uses: try vulns[source], if KeyError then try vulns[binary]
         relevant_vulns = vulns_by_pkg.get(pkg.source, None)
@@ -104,11 +122,42 @@ async def list_vulnerabilities(suite: str | None = None):
                 detected_vulnerabilities.append(v_copy)
 
     # Deduplicate by bug_id + installed_package
-    unique_vulns = {}
+    unique_vulns: dict[tuple, vulnerability.Vulnerability] = {}
     for v in detected_vulnerabilities:
         key = (v.bug_id, v.installed_package)
         if key not in unique_vulns:
             unique_vulns[key] = v
+
+    # --- Phase 2: OSV.dev cross-check for non-Debian packages ---
+    if non_debian_pkgs:
+        try:
+            osv_results = await osv.check_non_debian_packages(
+                non_debian_pkgs, vulns_by_pkg, epss_data
+            )
+            for entry in osv_results:
+                cve_id = entry["cve"]
+                pkg_name = entry["package"]
+                key = (cve_id, pkg_name)
+                if key not in unique_vulns:
+                    # Wrap the OSV result in a lightweight Vulnerability object
+                    # so the categoriser can handle it uniformly.
+                    v_osv = vulnerability.Vulnerability(
+                        bug_id=cve_id,
+                        package=pkg_name,
+                        description=entry["description"],
+                        unstable_version="",
+                        other_versions=[],
+                        is_binary=False,
+                        urgency=entry["urgency"],
+                        remote=None,
+                        fix_available=True,
+                    )
+                    v_osv.epss_score = entry["epss_score"]
+                    v_osv.epss_percentile = entry["epss_percentile"]
+                    v_osv.installed_package = pkg_name
+                    unique_vulns[key] = v_osv
+        except Exception as exc:
+            logger.error("OSV cross-check failed: %s", exc)
 
     categorized = vulnerability.categorise_vulnerabilities(list(unique_vulns.values()))
 

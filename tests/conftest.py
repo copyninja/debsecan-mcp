@@ -55,10 +55,41 @@ def sample_packages():
     from debvulns.package import Package, Version
 
     return [
-        Package("bash", Version("5.2-2"), "bash", Version("5.2-2")),
-        Package("openssl", Version("3.0.16-1"), "openssl", Version("3.0.16-1")),
-        Package("curl", Version("8.5.0-1"), "curl", Version("8.5.0-1")),
+        Package("bash", Version("5.2-2"), "bash", Version("5.2-2"), origin="Debian", archive="unstable"),
+        Package("openssl", Version("3.0.16-1"), "openssl", Version("3.0.16-1"), origin="Debian", archive="unstable"),
+        Package("curl", Version("8.5.0-1"), "curl", Version("8.5.0-1"), origin="Debian", archive="unstable"),
     ]
+
+
+@pytest.fixture
+def sample_non_debian_packages():
+    """Packages installed from third-party repos (e.g. grafana.com APT repo)."""
+    from debvulns.package import Package, Version
+
+    return [
+        Package("grafana", Version("8.1.5"), "grafana", Version("8.1.5"), origin="", archive="now"),
+    ]
+
+
+@pytest.fixture
+def sample_osv_response():
+    """Minimal OSV API response for CVE-2021-39226 (Grafana snapshot vulnerability)."""
+    return {
+        "id": "CVE-2021-39226",
+        "summary": "Grafana snapshot vulnerability",
+        "details": "Unauthenticated users can view snapshots with lowest database key.",
+        "aliases": ["GHSA-69j6-29vr-p3j9"],
+        "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"}],
+        "affected": [
+            {
+                "versions": [
+                    "v8.1.5", "v8.1.4", "v8.1.3", "v8.1.2", "v8.1.1",
+                    "v7.5.10", "v7.5.9", "v7.5.8",
+                ],
+                "ranges": [],
+            }
+        ],
+    }
 
 
 @pytest.fixture

@@ -17,8 +17,14 @@ If ``cache_dir`` is provided, downloads are written to ``<name>.tmp``
 first and then atomically renamed to ``<name>`` via ``os.replace``.
 This prevents the HTTP server from ever reading a partially-written file.
 The in-memory Cache is always the primary source; disk files are only
-used as a warm-start to skip the network download when they are fresh
-(< ``refresh_interval`` seconds old).
+used as a warm-start to skip the network download when they are fresh.
+
+Cache freshness thresholds
+--------------------------
+* EPSS + Debian vulnerability data: ``refresh_interval`` seconds (default 24 h).
+* OSV results (non-Debian packages): ``osv_cache_max_age`` seconds (default 7 days).
+  OSV data for a given installed package version changes infrequently, so a
+  longer TTL avoids unnecessary API traffic to OSV.dev.
 """
 
 from __future__ import annotations
@@ -33,7 +39,7 @@ import tempfile
 import threading
 import time
 
-from . import epss, package, vulnerability
+from . import epss, osv, package, vulnerability
 from .cache import Cache, ScanResult
 
 logger = logging.getLogger(__name__)
@@ -138,6 +144,7 @@ async def _run_scan(
     epss_url: str | None,
     cache_dir: str | None,
     refresh_interval: float,
+    osv_cache_max_age: float = 604800.0,
 ) -> ScanResult:
     """Run the full scan pipeline and return a populated ScanResult."""
     t0 = time.monotonic()
@@ -208,9 +215,20 @@ async def _run_scan(
     logger.info("Reading installed packages")
     installed_packages = package.get_installed_packages()
 
-    # --- 4. Match vulnerabilities against installed packages ----------------
+    # Split by origin: only Debian-sourced packages go through the Debian feed.
+    debian_pkgs = [p for p in installed_packages if p.is_debian_origin]
+    non_debian_pkgs = [p for p in installed_packages if not p.is_debian_origin]
+
+    if non_debian_pkgs:
+        logger.info(
+            "Skipping %d non-Debian package(s) from Debian feed scan: %s",
+            len(non_debian_pkgs),
+            [p.name for p in non_debian_pkgs],
+        )
+
+    # --- 4. Match vulnerabilities against Debian-origin packages only -------
     detected: list[vulnerability.Vulnerability] = []
-    for pkg in installed_packages:
+    for pkg in debian_pkgs:
         relevant = vuln_feed.get(pkg.source) or vuln_feed.get(pkg.name, [])
         for v in relevant:
             if v.is_vulnerable(pkg):
@@ -228,6 +246,59 @@ async def _run_scan(
         key = (v.bug_id, v.installed_package)  # type: ignore[arg-type]
         if key not in unique:
             unique[key] = v
+
+    # --- 5b. OSV cross-check for non-Debian packages ------------------------
+    if non_debian_pkgs:
+        osv_cache_path = (
+            os.path.join(cache_dir, "osv_results.json") if cache_dir else None
+        )
+        osv_results: list[dict] = []
+
+        if osv_cache_path and _is_fresh(osv_cache_path, osv_cache_max_age):
+            logger.debug("Loading OSV results from disk cache: %s", osv_cache_path)
+            try:
+                with open(osv_cache_path) as fh:
+                    osv_results = json.load(fh)
+            except Exception as exc:
+                logger.warning("Failed to read OSV cache: %s", exc)
+                osv_results = []
+
+        if not osv_results:
+            try:
+                osv_results = await osv.check_non_debian_packages(
+                    non_debian_pkgs, vuln_feed, epss_data
+                )
+                if osv_cache_path and cache_dir:
+                    try:
+                        os.makedirs(cache_dir, exist_ok=True)
+                        _atomic_write_json(osv_results, osv_cache_path)
+                        logger.debug("Saved OSV results to %s", osv_cache_path)
+                    except Exception as exc:
+                        logger.warning("Failed to write OSV cache: %s", exc)
+            except Exception as exc:
+                logger.error("OSV cross-check failed in refresh pipeline: %s", exc)
+
+        for entry in osv_results:
+            cve_id = entry["cve"]
+            pkg_name = entry["package"]
+            key = (cve_id, pkg_name)
+            if key not in unique:
+                v_osv = vulnerability.Vulnerability(
+                    bug_id=cve_id,
+                    package=pkg_name,
+                    description=entry["description"],
+                    unstable_version="",
+                    other_versions=[],
+                    is_binary=False,
+                    urgency=entry["urgency"],
+                    remote=None,
+                    fix_available=True,
+                )
+                v_osv.epss_score = entry["epss_score"]
+                v_osv.epss_percentile = entry["epss_percentile"]
+                v_osv.installed_package = pkg_name
+                v_osv.installed_version = None
+                unique[key] = v_osv
 
     # --- 6. Categorise -------------------------------------------------------
     categorized = vulnerability.categorise_vulnerabilities(list(unique.values()))
@@ -269,6 +340,7 @@ class RefreshThread(threading.Thread):
         vuln_url: str | None = None,
         epss_url: str | None = None,
         cache_dir: str | None = None,
+        osv_cache_max_age: float = 604800.0,
     ) -> None:
         super().__init__(daemon=True, name="cache-refresher")
         self._cache = cache
@@ -277,6 +349,7 @@ class RefreshThread(threading.Thread):
         self._vuln_url = vuln_url
         self._epss_url = epss_url
         self._cache_dir = cache_dir
+        self._osv_cache_max_age = osv_cache_max_age
         self._first_success = False
 
     def _next_sleep(self, attempt: int) -> float:
@@ -298,6 +371,7 @@ class RefreshThread(threading.Thread):
                         epss_url=self._epss_url,
                         cache_dir=self._cache_dir,
                         refresh_interval=self._interval,
+                        osv_cache_max_age=self._osv_cache_max_age,
                     )
                 )
                 self._first_success = True

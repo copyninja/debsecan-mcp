@@ -8,7 +8,7 @@ import os
 import sys
 import time
 
-from . import epss, package, vulnerability
+from . import epss, osv, package, vulnerability
 from .main import detect_suite
 from .vulnerability import Vulnerability
 
@@ -72,11 +72,12 @@ def get_cache_dir(configured_dir: str) -> str | None:
     return None
 
 
-def is_cache_valid(cache_file: str) -> bool:
+def is_cache_valid(cache_file: str, max_age: float = 86400.0) -> bool:
+    """Return True if *cache_file* exists and is younger than *max_age* seconds."""
     if not os.path.exists(cache_file):
         return False
     mtime = os.path.getmtime(cache_file)
-    return (time.time() - mtime) < 24 * 3600
+    return (time.time() - mtime) < max_age
 
 
 def format_vuln_dict(v: Vulnerability, severity: str) -> dict:
@@ -97,6 +98,7 @@ def format_vuln_dict(v: Vulnerability, severity: str) -> dict:
         "fix_available": "Yes" if v.fix_available else "No",
         "remote": "Yes" if v.remote else "No",
         "description": v.description,
+        "source": getattr(v, "_source", "debian"),
     }
 
 
@@ -184,6 +186,30 @@ async def async_main():
         ),
     )
     parser.add_argument(
+        "--cache-max-age",
+        type=int,
+        default=86400,
+        dest="cache_max_age",
+        metavar="SECS",
+        help=(
+            "Maximum age in seconds for EPSS and Debian vulnerability cache "
+            "before re-downloading (default: 86400 = 24 h). "
+            "Ignored when --no-cache is set."
+        ),
+    )
+    parser.add_argument(
+        "--osv-cache-max-age",
+        type=int,
+        default=604800,
+        dest="osv_cache_max_age",
+        metavar="SECS",
+        help=(
+            "Maximum age in seconds for the OSV results cache before "
+            "re-querying OSV.dev (default: 604800 = 7 days). "
+            "Ignored when --no-cache is set."
+        ),
+    )
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Do not use cached data, force downloading and parsing",
@@ -212,6 +238,8 @@ async def async_main():
         sys.exit(1)
 
     use_cache = not args.no_cache
+    cache_max_age = float(args.cache_max_age)
+    osv_cache_max_age = float(args.osv_cache_max_age)
     cache_dir = None
     if use_cache:
         cache_dir = get_cache_dir(args.cache_dir)
@@ -223,10 +251,13 @@ async def async_main():
     vuln_cache_path = (
         os.path.join(cache_dir, f"vulnerabilities_{suite}.json") if use_cache else None
     )
+    osv_cache_path = (
+        os.path.join(cache_dir, "osv_results.json") if use_cache else None
+    )
 
     # Load EPSS
     epss_data = None
-    if use_cache and is_cache_valid(epss_cache_path):
+    if use_cache and is_cache_valid(epss_cache_path, cache_max_age):
         logger.debug(f"Loading EPSS from cache: {epss_cache_path}")
         try:
             with open(epss_cache_path) as f:
@@ -250,7 +281,7 @@ async def async_main():
 
     # Load Vulnerabilities
     vuln_feed = None
-    if use_cache and is_cache_valid(vuln_cache_path):
+    if use_cache and is_cache_valid(vuln_cache_path, cache_max_age):
         logger.debug(f"Loading vulnerabilities from cache: {vuln_cache_path}")
         try:
             with open(vuln_cache_path) as f:
@@ -280,8 +311,19 @@ async def async_main():
         logger.error(f"Failed to get installed packages: {e}")
         sys.exit(1)
 
+    # Split by origin: only Debian-sourced packages go through the debsecan loop.
+    debian_pkgs = [p for p in installed_packages if p.is_debian_origin]
+    non_debian_pkgs = [p for p in installed_packages if not p.is_debian_origin]
+
+    if non_debian_pkgs:
+        logger.info(
+            "Skipping %d non-Debian package(s) from Debian feed: %s",
+            len(non_debian_pkgs),
+            [p.name for p in non_debian_pkgs],
+        )
+
     detected_vulnerabilities = []
-    for pkg in installed_packages:
+    for pkg in debian_pkgs:
         relevant_vulns = vuln_feed.get(pkg.source, None)
         if relevant_vulns is None:
             relevant_vulns = vuln_feed.get(pkg.name, [])
@@ -296,11 +338,63 @@ async def async_main():
                 v_copy.installed_version = pkg.version
                 detected_vulnerabilities.append(v_copy)
 
-    unique_vulns = {}
+    unique_vulns: dict[tuple, Vulnerability] = {}
     for v in detected_vulnerabilities:
         key = (v.bug_id, v.installed_package)
         if key not in unique_vulns:
             unique_vulns[key] = v
+
+    # --- Phase 2: OSV.dev cross-check for non-Debian packages ---
+    if non_debian_pkgs:
+        osv_results: list[dict] = []
+
+        # Try loading from cache first.
+        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path, osv_cache_max_age):
+            logger.debug(f"Loading OSV results from cache: {osv_cache_path}")
+            try:
+                with open(osv_cache_path) as f:
+                    osv_results = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read cached OSV results: {e}")
+                osv_results = []
+
+        if not osv_results:
+            try:
+                osv_results = await osv.check_non_debian_packages(
+                    non_debian_pkgs, vuln_feed, epss_data
+                )
+                if use_cache and osv_cache_path:
+                    logger.debug(f"Saving OSV results to cache: {osv_cache_path}")
+                    try:
+                        with open(osv_cache_path, "w") as f:
+                            json.dump(osv_results, f)
+                    except Exception as e:
+                        logger.warning(f"Failed to write OSV results to cache: {e}")
+            except Exception as e:
+                logger.warning(f"OSV cross-check failed, skipping: {e}")
+
+        for entry in osv_results:
+            cve_id = entry["cve"]
+            pkg_name = entry["package"]
+            key = (cve_id, pkg_name)
+            if key not in unique_vulns:
+                v_osv = Vulnerability(
+                    bug_id=cve_id,
+                    package=pkg_name,
+                    description=entry["description"],
+                    unstable_version="",
+                    other_versions=[],
+                    is_binary=False,
+                    urgency=entry["urgency"],
+                    remote=None,
+                    fix_available=True,
+                )
+                v_osv.epss_score = entry["epss_score"]
+                v_osv.epss_percentile = entry["epss_percentile"]
+                v_osv.installed_package = pkg_name
+                v_osv.installed_version = None
+                v_osv._source = "osv.dev"  # type: ignore[attr-defined]
+                unique_vulns[key] = v_osv
 
     categorized = vulnerability.categorise_vulnerabilities(list(unique_vulns.values()))
 
