@@ -34,6 +34,13 @@ class ScanResult:
     # True = scan succeeded; False = scan failed (may still carry stale data)
     scan_ok: bool = False
 
+    # Restart / reboot state; None = detection not run or unsupported (e.g. container)
+    restart_info: "RestartInfo | None" = None
+
+
+# Import here (after ScanResult definition) to avoid circular imports at module load
+from .needrestart import RestartInfo  # noqa: E402  # type: ignore[assignment]
+
 
 class Cache:
     """Thread-safe container for the latest ScanResult.

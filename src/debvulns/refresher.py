@@ -39,7 +39,7 @@ import tempfile
 import threading
 import time
 
-from . import epss, osv, package, vulnerability
+from . import epss, needrestart, osv, package, vulnerability
 from .cache import Cache, ScanResult
 
 logger = logging.getLogger(__name__)
@@ -303,6 +303,21 @@ async def _run_scan(
     # --- 6. Categorise -------------------------------------------------------
     categorized = vulnerability.categorise_vulnerabilities(list(unique.values()))
 
+    # --- 7. Restart / reboot detection (best-effort, non-fatal) -------------
+    restart_info: needrestart.RestartInfo | None = None
+    try:
+        restart_info = needrestart.collect()
+        logger.info(
+            "Restart check: %d service(s) need restart, reboot_required=%s, "
+            "running_kernel=%s, expected_kernel=%s",
+            len(restart_info.services_needing_restart),
+            restart_info.reboot_required,
+            restart_info.running_kernel,
+            restart_info.expected_kernel,
+        )
+    except Exception as exc:
+        logger.warning("Restart/reboot detection failed (non-fatal): %s", exc)
+
     duration = time.monotonic() - t0
     logger.info(
         "Scan complete in %.2f s — %d unique (cve, pkg) pairs "
@@ -318,6 +333,7 @@ async def _run_scan(
         scan_timestamp=time.time(),
         scan_duration=duration,
         scan_ok=True,
+        restart_info=restart_info,
     )
 
 

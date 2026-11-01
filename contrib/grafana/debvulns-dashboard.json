@@ -262,7 +262,7 @@
       "type": "stat"
     },
     {
-      "description": "Distinct critical or high severity CVEs across selected instances (fleet-wide unique). Each CVE is counted once regardless of how many hosts are affected — these are the highest priority to remediate.",
+      "description": "Distinct critical or high severity CVEs across selected instances (fleet-wide unique). Each CVE is counted once regardless of how many hosts are affected \u2014 these are the highest priority to remediate.",
       "fieldConfig": {
         "defaults": {
           "thresholds": {
@@ -372,7 +372,7 @@
       "type": "stat"
     },
     {
-      "description": "Number of distinct installed packages with at least one active vulnerability. One package may carry multiple CVEs — this tells you how many apt upgrade targets you have.",
+      "description": "Number of distinct installed packages with at least one active vulnerability. One package may carry multiple CVEs \u2014 this tells you how many apt upgrade targets you have.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -445,6 +445,394 @@
         "x": 0,
         "y": 3
       },
+      "id": 20,
+      "title": "System Health \u2014 Restart & Reboot",
+      "type": "row"
+    },
+    {
+      "description": "1 = a newer kernel is installed and a reboot is required to activate it. 0 = running kernel is up-to-date. -1 = detection unavailable (container / restricted environment).",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "-1": {
+                  "color": "gray",
+                  "text": "N/A"
+                },
+                "0": {
+                  "color": "green",
+                  "text": "Up-to-date"
+                },
+                "1": {
+                  "color": "red",
+                  "text": "\u26a0 Reboot Required"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "debvulns_reboot_required{instance=~\"^$instance$\"}",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Reboot Required",
+      "type": "stat"
+    },
+    {
+      "description": "Number of systemd services (or processes) using stale library or binary mappings that need restarting. -1 means detection was unavailable.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "-1": {
+                  "color": "gray",
+                  "text": "N/A"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "debvulns_services_needing_restart_total{instance=~\"^$instance$\"}",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Services Needing Restart",
+      "type": "stat"
+    },
+    {
+      "description": "Running kernel version on the selected instance(s).",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "running",
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "debvulns_kernel_info{instance=~\"^$instance$\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Running Kernel",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "expected": true,
+              "instance": true
+            },
+            "renameByName": {
+              "running": "Running Kernel"
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "description": "Newest installed kernel version (from dpkg). Matches Running Kernel when no reboot is pending.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "id": 24,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "expected",
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "debvulns_kernel_info{instance=~\"^$instance$\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Expected Kernel",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "running": true,
+              "instance": true
+            },
+            "renameByName": {
+              "expected": "Expected Kernel"
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "description": "Services or processes running against stale/replaced library or binary files. These should be restarted (e.g. via systemctl restart) to pick up the latest versions without requiring a full reboot.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Instance"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 25,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Service"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "debvulns_service_needs_restart{instance=~\"^$instance$\"} == 1",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Services Needing Restart",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true
+            },
+            "indexByName": {
+              "service": 0,
+              "instance": 1
+            },
+            "renameByName": {
+              "service": "Service",
+              "instance": "Instance"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
       "id": 7,
       "title": "Priority Intelligence",
       "type": "row"
@@ -483,7 +871,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 14
       },
       "id": 8,
       "options": {
@@ -509,11 +897,11 @@
           "editorMode": "code",
           "expr": "topk(10,\n  debvulns_vulnerability_epss_score{instance=~\"^$instance$\"}\n  * on(cve, package, instance) group_left()\n    (debvulns_vulnerability_info{instance=~\"^$instance$\", fix_available=\"true\"})\n)",
           "instant": true,
-          "legendFormat": "{{cve}} · {{package}}",
+          "legendFormat": "{{cve}} \u00b7 {{package}}",
           "refId": "A"
         }
       ],
-      "title": "🔴 Patch Now — High EPSS, Fix Available",
+      "title": "\ud83d\udd34 Patch Now \u2014 High EPSS, Fix Available",
       "type": "bargauge"
     },
     {
@@ -550,7 +938,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 14
       },
       "id": 9,
       "options": {
@@ -576,11 +964,11 @@
           "editorMode": "code",
           "expr": "topk(10,\n  debvulns_vulnerability_epss_score{instance=~\"^$instance$\"}\n  * on(cve, package, instance) group_left()\n    (debvulns_vulnerability_info{instance=~\"^$instance$\", fix_available=\"false\"})\n)",
           "instant": true,
-          "legendFormat": "{{cve}} · {{package}}",
+          "legendFormat": "{{cve}} \u00b7 {{package}}",
           "refId": "A"
         }
       ],
-      "title": "🟡 Monitor — High EPSS, No Fix Yet",
+      "title": "\ud83d\udfe1 Monitor \u2014 High EPSS, No Fix Yet",
       "type": "bargauge"
     },
     {
@@ -589,7 +977,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 23
       },
       "id": 10,
       "title": "Full Vulnerability Inventory",
@@ -689,7 +1077,7 @@
                     "options": {
                       "true": {
                         "color": "green",
-                        "text": "✓ Yes"
+                        "text": "\u2713 Yes"
                       }
                     },
                     "type": "value"
@@ -698,7 +1086,7 @@
                     "options": {
                       "false": {
                         "color": "red",
-                        "text": "✗ No"
+                        "text": "\u2717 No"
                       }
                     },
                     "type": "value"
@@ -746,7 +1134,7 @@
                     "options": {
                       "unknown": {
                         "color": "gray",
-                        "text": "—"
+                        "text": "\u2014"
                       }
                     },
                     "type": "value"
@@ -849,7 +1237,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 24
       },
       "id": 11,
       "options": {
@@ -974,7 +1362,7 @@
         "h": 5,
         "w": 10,
         "x": 0,
-        "y": 28
+        "y": 38
       },
       "id": 13,
       "options": {
@@ -1029,7 +1417,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 33
+        "y": 43
       },
       "id": 16,
       "title": "Package & Instance Summary",
@@ -1103,7 +1491,7 @@
         "h": 10,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 44
       },
       "id": 17,
       "options": {
@@ -1160,7 +1548,7 @@
       "type": "table"
     },
     {
-      "description": "All packages with at least one active CVE, ranked by number of distinct CVEs per instance. Use this to prioritise which packages to upgrade first — higher CVE count = broader attack surface for that package.",
+      "description": "All packages with at least one active CVE, ranked by number of distinct CVEs per instance. Use this to prioritise which packages to upgrade first \u2014 higher CVE count = broader attack surface for that package.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1239,7 +1627,7 @@
         "h": 10,
         "w": 16,
         "x": 8,
-        "y": 34
+        "y": 44
       },
       "id": 18,
       "options": {

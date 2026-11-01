@@ -143,6 +143,34 @@ _EPSS_PERCENTILE = Gauge(
     registry=REGISTRY,
 )
 
+# Restart / reboot metrics
+_REBOOT_REQUIRED = Gauge(
+    "debvulns_reboot_required",
+    "1 if a newer kernel is installed and a reboot is required, 0 if up-to-date, "
+    "-1 if detection was unavailable (container / restricted environment).",
+    registry=REGISTRY,
+)
+_KERNEL_INFO = Gauge(
+    "debvulns_kernel_info",
+    "Running and expected kernel versions (value always 1; use labels for versions). "
+    "Absent when kernel detection is unavailable.",
+    ["running", "expected"],
+    registry=REGISTRY,
+)
+_SERVICES_RESTART_TOTAL = Gauge(
+    "debvulns_services_needing_restart_total",
+    "Number of systemd services (or processes) with stale library/binary mappings "
+    "that need restarting. -1 when detection was unavailable.",
+    registry=REGISTRY,
+)
+_SERVICE_RESTART_INFO = Gauge(
+    "debvulns_service_needs_restart",
+    "1 for each service unit (or process name) that needs restarting due to "
+    "updated libraries or binaries on disk.",
+    ["service"],
+    registry=REGISTRY,
+)
+
 
 # ---------------------------------------------------------------------------
 # Metric population
@@ -165,6 +193,26 @@ def _update_metrics(result: ScanResult, suite: str) -> None:
     _FIX_INFO.clear()
     _EPSS_SCORE.clear()
     _EPSS_PERCENTILE.clear()
+    _KERNEL_INFO.clear()
+    _SERVICE_RESTART_INFO.clear()
+
+    # --- Restart / reboot metrics -----------------------------------------
+    ri = result.restart_info
+    if ri is not None:
+        _REBOOT_REQUIRED.set(1 if ri.reboot_required else 0)
+        _SERVICES_RESTART_TOTAL.set(len(ri.services_needing_restart))
+        if ri.running_kernel:
+            _KERNEL_INFO.labels(
+                running=ri.running_kernel,
+                expected=ri.expected_kernel or "",
+            ).set(1)
+        for svc in ri.services_needing_restart:
+            _SERVICE_RESTART_INFO.labels(service=svc).set(1)
+    else:
+        # Detection unavailable — sentinel value so dashboards can distinguish
+        # "zero services need restart" from "check couldn't run"
+        _REBOOT_REQUIRED.set(-1)
+        _SERVICES_RESTART_TOTAL.set(-1)
 
     if not result.scan_ok or not result.categorized:
         return
