@@ -100,17 +100,20 @@ async def list_vulnerabilities(suite: str | None = None):
         )
 
     detected_vulnerabilities = []
+    running_kernel_ver = package.get_running_kernel_version()
 
     # --- Phase 1: Debian Security Tracker scan ---
     for pkg in debian_pkgs:
         # Try source package first, fallback to binary package (matching debsecan logic)
         # debsecan uses: try vulns[source], if KeyError then try vulns[binary]
-        relevant_vulns = vulns_by_pkg.get(pkg.source, None)
+        # Map linux-signed-* source packages to "linux"
+        src_name = "linux" if pkg.source.startswith("linux-signed-") else pkg.source
+        relevant_vulns = vulns_by_pkg.get(src_name, None)
         if relevant_vulns is None:
             relevant_vulns = vulns_by_pkg.get(pkg.name, [])
 
         for v in relevant_vulns:
-            if v.is_vulnerable(pkg):
+            if v.is_vulnerable(pkg, running_kernel_version=running_kernel_ver):
                 # Enrich with EPSS score and percentile
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
                 # Create a shallow copy to avoid mutating the feed data
@@ -119,6 +122,10 @@ async def list_vulnerabilities(suite: str | None = None):
                 v_copy.epss_percentile = epss_info["percentile"]
                 # Track the actual installed package that matched
                 v_copy.installed_package = pkg.name
+                if v.is_kernel and running_kernel_ver is not None:
+                    v_copy.installed_version = running_kernel_ver
+                else:
+                    v_copy.installed_version = pkg.version
                 detected_vulnerabilities.append(v_copy)
 
     # Deduplicate by bug_id + installed_package

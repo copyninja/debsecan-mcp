@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -247,6 +249,93 @@ class Package:
             archive=pkg_archive,
             maintainer=pkg_maintainer,
         )
+
+
+def is_kernel_package(pkg: Package) -> bool:
+    """Return True if the package is a Linux kernel package."""
+    return (
+        pkg.source in ("linux", "linux-2.6")
+        or pkg.source.startswith("linux-signed-")
+        or pkg.name.startswith(("linux-image-", "linux-modules-", "linux-headers-"))
+    )
+
+
+def get_running_kernel_version() -> Version | None:
+    """Detect the Debian version of the currently running Linux kernel.
+
+    Resolution order:
+    1. DEBVULNS_RUNNING_KERNEL environment variable (for testing/containers).
+    2. platform.version() (uname -v): official Debian kernels include
+       'Debian <version>'.
+    3. /proc/version: looks for '#\\d+.*Debian\\s+<version>'.
+    4. dpkg-query lookup for linux-image-<release>.
+    5. platform.release() fallback (e.g. '6.1.0-28').
+
+    Returns None if detection fails or running on a non-Linux OS.
+    """
+    override = os.getenv("DEBVULNS_RUNNING_KERNEL")
+    if override:
+        try:
+            return Version(override.strip())
+        except ValueError:
+            logger.warning("Invalid DEBVULNS_RUNNING_KERNEL value: %s", override)
+
+    # 1. Check platform.version() (uname -v)
+    try:
+        uts_version = platform.version()
+        m = re.search(r"Debian\s+([0-9][0-9a-zA-Z.+~:-]+)", uts_version)
+        if m:
+            ver_str = m.group(1).rstrip(")")
+            return Version(ver_str)
+    except Exception as exc:
+        logger.debug("Failed to parse Debian version from platform.version(): %s", exc)
+
+    # 2. Check /proc/version
+    try:
+        if os.path.exists("/proc/version"):
+            with open("/proc/version", errors="replace") as fh:
+                pv = fh.read()
+            m = re.search(r"#\d+\s+.*Debian\s+([0-9][0-9a-zA-Z.+~:-]+)", pv)
+            if m:
+                ver_str = m.group(1).rstrip(")")
+                return Version(ver_str)
+    except Exception as exc:
+        logger.debug("Failed to read/parse /proc/version: %s", exc)
+
+    # 3. Check dpkg-query for linux-image-$(platform.release())
+    release = platform.release()
+    if release and shutil.which("dpkg-query"):
+        try:
+            res = subprocess.run(
+                [
+                    "dpkg-query",
+                    "-W",
+                    "-f=${Version}\t${source:Version}\n",
+                    f"linux-image-{release}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                parts = res.stdout.strip().split("\t")
+                cand = parts[0] if parts[0] else (parts[1] if len(parts) > 1 else "")
+                if cand:
+                    return Version(cand)
+        except Exception as exc:
+            logger.debug("dpkg-query lookup for running kernel image failed: %s", exc)
+
+    # 4. Fallback: attempt to parse platform.release() without arch suffix
+    if release:
+        base_rel = re.sub(
+            r"-(amd64|arm64|armhf|i386|riscv64|s390x|ppc64el)$", "", release
+        )
+        try:
+            return Version(base_rel)
+        except ValueError:
+            pass
+
+    return None
 
 
 def _get_installed_packages_system_apt() -> list[Package] | None:

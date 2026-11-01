@@ -234,6 +234,60 @@ class TestListVulnerabilities:
         assert "CVE-2021-39226" in all_cves
 
     @pytest.mark.asyncio
+    async def test_kernel_vulnerability_requires_running_kernel(self, mocker):
+        """Kernel vulnerability is reported when running kernel is unfixed, even if fixed pkg installed."""
+        from debvulns.package import Package, Version
+        from debvulns.vulnerability import Vulnerability
+
+        # Fixed package on disk
+        installed_kernel = [
+            Package(
+                "linux-image-6.1.0-30-amd64",
+                Version("6.1.174-1"),
+                "linux",
+                Version("6.1.174-1"),
+                origin="Debian",
+                archive="bookworm",
+            )
+        ]
+        vuln = Vulnerability(
+            bug_id="CVE-2022-48772",
+            package="linux",
+            description="kernel vulnerability",
+            unstable_version="6.9.7-1",
+            other_versions=["6.1.174-1"],
+            is_binary=False,
+            urgency="M",
+            remote=None,
+            fix_available=True,
+        )
+        feed = {"linux": [vuln]}
+
+        # Case 1: Running kernel is old (6.1.11-1) -> detected
+        mocker.patch(
+            "debvulns.package.get_running_kernel_version",
+            return_value=Version("6.1.11-1"),
+        )
+        with patch("debvulns.main.installed_packages", installed_kernel):
+            with patch("debvulns.main.vulnerability_feed", feed):
+                with patch("debvulns.main.epss_data", {}):
+                    result = await list_vulnerabilities()
+                    all_cves = set().union(*result.values())
+                    assert "CVE-2022-48772" in all_cves
+
+        # Case 2: Running kernel is fixed (6.1.174-1) -> not detected
+        mocker.patch(
+            "debvulns.package.get_running_kernel_version",
+            return_value=Version("6.1.174-1"),
+        )
+        with patch("debvulns.main.installed_packages", installed_kernel):
+            with patch("debvulns.main.vulnerability_feed", feed):
+                with patch("debvulns.main.epss_data", {}):
+                    result = await list_vulnerabilities()
+                    all_cves = set().union(*result.values())
+                    assert all_cves == set()
+
+    @pytest.mark.asyncio
     async def test_osv_failure_does_not_crash(
         self, sample_packages, sample_non_debian_packages, sample_epss_data, mocker
     ):

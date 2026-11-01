@@ -2,7 +2,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from debvulns.package import Package, Version, get_installed_packages
+from debvulns.package import (
+    Package,
+    Version,
+    get_installed_packages,
+    get_running_kernel_version,
+    is_kernel_package,
+)
 
 
 class TestVersion:
@@ -325,4 +331,60 @@ class TestGetInstalledPackages:
 
         packages = get_installed_packages()
         assert packages == mock_bridge
+
+
+class TestIsKernelPackage:
+    def test_kernel_packages(self):
+        assert is_kernel_package(Package("linux-image-6.1.0-28-amd64", Version("6.1.128-1"), "linux", Version("6.1.128-1"))) is True
+        assert is_kernel_package(Package("linux-image-amd64", Version("6.1.128-1"), "linux-signed-amd64", Version("6.1.128+1"))) is True
+        assert is_kernel_package(Package("linux-headers-6.1.0-28-amd64", Version("6.1.128-1"), "linux", Version("6.1.128-1"))) is True
+        assert is_kernel_package(Package("linux-modules-6.1.0-28-amd64", Version("6.1.128-1"), "linux", Version("6.1.128-1"))) is True
+
+    def test_non_kernel_packages(self):
+        assert is_kernel_package(Package("bash", Version("5.2-2"))) is False
+        assert is_kernel_package(Package("curl", Version("8.5.0-1"))) is False
+
+
+class TestGetRunningKernelVersion:
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("DEBVULNS_RUNNING_KERNEL", "6.1.119-1")
+        ver = get_running_kernel_version()
+        assert ver is not None
+        assert str(ver) == "6.1.119-1"
+
+    def test_platform_version_parsing(self, monkeypatch):
+        monkeypatch.delenv("DEBVULNS_RUNNING_KERNEL", raising=False)
+        monkeypatch.setattr("platform.version", lambda: "#1 SMP PREEMPT_DYNAMIC Debian 7.2.12-1 (2026-10-22)")
+        ver = get_running_kernel_version()
+        assert ver is not None
+        assert str(ver) == "7.2.12-1"
+
+    def test_platform_version_bookworm(self, monkeypatch):
+        monkeypatch.delenv("DEBVULNS_RUNNING_KERNEL", raising=False)
+        monkeypatch.setattr("platform.version", lambda: "#1 SMP Debian 6.1.119-1 (2024-11-22)")
+        ver = get_running_kernel_version()
+        assert ver is not None
+        assert str(ver) == "6.1.119-1"
+
+    def test_proc_version_fallback(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("DEBVULNS_RUNNING_KERNEL", raising=False)
+        monkeypatch.setattr("platform.version", lambda: "#1 SMP invalid")
+        proc_file = tmp_path / "proc_version"
+        proc_file.write_text("Linux version 6.1.0-27-amd64 (gcc) #1 SMP Debian 6.1.119-1 (2024-11-22)\n")
+        monkeypatch.setattr("os.path.exists", lambda p: True if p == "/proc/version" else False)
+        monkeypatch.setattr("builtins.open", lambda p, *args, **kwargs: proc_file.open(*args, **kwargs) if p == "/proc/version" else open(p, *args, **kwargs))
+        ver = get_running_kernel_version()
+        assert ver is not None
+        assert str(ver) == "6.1.119-1"
+
+    def test_release_fallback(self, monkeypatch):
+        monkeypatch.delenv("DEBVULNS_RUNNING_KERNEL", raising=False)
+        monkeypatch.setattr("platform.version", lambda: "custom kernel")
+        monkeypatch.setattr("os.path.exists", lambda p: False)
+        monkeypatch.setattr("shutil.which", lambda p: False)
+        monkeypatch.setattr("platform.release", lambda: "6.1.0-28-amd64")
+        ver = get_running_kernel_version()
+        assert ver is not None
+        assert str(ver) == "6.1.0-28"
+
 

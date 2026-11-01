@@ -337,6 +337,71 @@ async def test_async_main_sorting(
     assert high_vulns[1]["cve"] == "CVE-2024-5678"
 
 
+@pytest.mark.asyncio
+@patch("debvulns.cli.detect_suite", return_value="bookworm")
+@patch("debvulns.cli.epss.download_epss", new_callable=AsyncMock)
+@patch("debvulns.cli.vulnerability.fetch_data", new_callable=AsyncMock)
+@patch("debvulns.cli.package.get_installed_packages")
+@patch("debvulns.cli.package.get_running_kernel_version")
+async def test_async_main_kernel_running_check(
+    mock_running_kernel,
+    mock_get_pkgs,
+    mock_fetch_data,
+    mock_download_epss,
+    mock_detect,
+    capsys,
+    mock_apt_pkg,
+):
+    mock_get_pkgs.return_value = [
+        Package(
+            "linux-image-6.1.0-30-amd64",
+            Version("6.1.174-1"),
+            "linux",
+            Version("6.1.174-1"),
+            origin="Debian",
+            archive="bookworm",
+        )
+    ]
+    vuln = Vulnerability(
+        bug_id="CVE-2022-48772",
+        package="linux",
+        description="kernel vulnerability",
+        unstable_version="6.9.7-1",
+        other_versions=["6.1.174-1"],
+        is_binary=False,
+        urgency="H",
+        remote=True,
+        fix_available=True,
+    )
+    mock_fetch_data.return_value = {"linux": [vuln]}
+    mock_download_epss.return_value = {
+        "CVE-2022-48772": {"score": 0.5, "percentile": 0.8}
+    }
+
+    # Case 1: Running kernel is old (6.1.11-1) -> reported with running version
+    mock_running_kernel.return_value = Version("6.1.11-1")
+    test_args = ["debvulns", "--no-cache", "-f", "json"]
+    with patch("sys.argv", test_args):
+        await cli.async_main()
+
+    captured = capsys.readouterr()
+    output_data = json.loads(captured.out)
+    all_vulns = [item for items in output_data.values() for item in items]
+    assert len(all_vulns) == 1
+    assert all_vulns[0]["cve"] == "CVE-2022-48772"
+    assert all_vulns[0]["installed_version"] == "6.1.11-1"
+
+    # Case 2: Running kernel is fixed (6.1.174-1) -> not reported
+    mock_running_kernel.return_value = Version("6.1.174-1")
+    with patch("sys.argv", test_args):
+        await cli.async_main()
+
+    captured = capsys.readouterr()
+    output_data = json.loads(captured.out)
+    all_vulns_after = [item for items in output_data.values() for item in items]
+    assert all_vulns_after == []
+
+
 class TestDebsecanIntegration:
     @pytest.mark.asyncio
     @requires_debsecan

@@ -237,8 +237,8 @@ def detect_kernel_reboot() -> tuple[bool, str, str | None]:
             if len(parts) < 3:
                 continue
             _pkg, version, status = parts
-            # Only consider installed packages
-            if "installed" not in status:
+            # Only consider installed packages (Status e.g. "install ok installed")
+            if not status.strip().endswith(" installed") or not version.strip():
                 continue
             if best_version is None or version_compare(version, best_version) > 0:
                 best_version = version

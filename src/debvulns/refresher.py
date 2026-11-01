@@ -228,16 +228,21 @@ async def _run_scan(
 
     # --- 4. Match vulnerabilities against Debian-origin packages only -------
     detected: list[vulnerability.Vulnerability] = []
+    running_kernel_ver = package.get_running_kernel_version()
     for pkg in debian_pkgs:
-        relevant = vuln_feed.get(pkg.source) or vuln_feed.get(pkg.name, [])
+        src_name = "linux" if pkg.source.startswith("linux-signed-") else pkg.source
+        relevant = vuln_feed.get(src_name) or vuln_feed.get(pkg.name, [])
         for v in relevant:
-            if v.is_vulnerable(pkg):
+            if v.is_vulnerable(pkg, running_kernel_version=running_kernel_ver):
                 epss_info = epss_data.get(v.bug_id, {"score": 0.0, "percentile": 0.0})
                 v_copy = copy.copy(v)
                 v_copy.epss_score = epss_info["score"]
                 v_copy.epss_percentile = epss_info["percentile"]
                 v_copy.installed_package = pkg.name
-                v_copy.installed_version = pkg.version
+                if v.is_kernel and running_kernel_ver is not None:
+                    v_copy.installed_version = running_kernel_ver
+                else:
+                    v_copy.installed_version = pkg.version
                 detected.append(v_copy)
 
     # --- 5. Deduplicate (cve, package) pairs --------------------------------
