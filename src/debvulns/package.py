@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 import shutil
 import subprocess
+import sys
 
 from debian.debian_support import NativeVersion
 
@@ -9,13 +12,25 @@ logger = logging.getLogger(__name__)
 # Try importing apt_pkg and fallback to python-debian if not available
 try:
     import apt_pkg  # type: ignore[import-not-found]
-
-    if apt_pkg is not None:
-        apt_pkg.init()
-    _has_apt_pkg = True
 except ImportError:
+    # If running inside a virtualenv, python3-apt is installed in system dist-packages
+    for p in ("/usr/lib/python3/dist-packages", "/usr/local/lib/python3/dist-packages"):
+        if p not in sys.path and os.path.isdir(p):
+            sys.path.append(p)
+    try:
+        import apt_pkg  # type: ignore[import-not-found]
+    except ImportError:
+        apt_pkg = None
+
+if apt_pkg is not None:
+    try:
+        apt_pkg.init()
+        _has_apt_pkg = True
+    except Exception as e:
+        logger.debug("Failed to initialize apt_pkg: %s", e)
+        _has_apt_pkg = False
+else:
     _has_apt_pkg = False
-    apt_pkg = None
 
 
 def version_compare(v1: str, v2: str) -> int:
@@ -112,6 +127,7 @@ class Package:
         source_version: Version | None = None,
         origin: str = "",
         archive: str = "",
+        maintainer: str = "",
     ):
         self.name = name
         self.version = version
@@ -121,13 +137,19 @@ class Package:
         # (e.g. dpkg-query fallback path).
         self.origin = origin
         self.archive = archive
+        self.maintainer = maintainer if isinstance(maintainer, str) else ""
 
     @property
     def is_debian_origin(self) -> bool:
         """Return True if the package demonstrably comes from the Debian archive.
 
         Detection relies on apt_pkg metadata (origin / archive fields from
-        PackageFile).  When both are empty (dpkg-query fallback, or locally
+        PackageFile) and maintainer information. When origin is 'Debian' or
+        archive matches a known Debian suite, it is Debian.
+        Packages whose archive is 'now' (e.g. installed kernel images replaced by
+        a newer version in sid) are verified using maintainer email (@debian.org
+        or @debian.net).
+        When both origin and archive are empty (dpkg-query fallback, or locally
         built packages that were never registered in any APT source list) the
         method returns True so that those packages are still scanned by the
         Debian Security Tracker — this is the safe default that avoids missing
@@ -136,11 +158,14 @@ class Package:
         A package is considered *non*-Debian when:
         - origin is explicitly non-empty and different from "Debian", OR
         - archive is "now" (installed locally / outside any APT repo) and
-          origin is empty.
+          origin is empty, and maintainer is not a Debian maintainer.
         """
         if self.origin == "Debian":
             return True
         if self.archive in _DEBIAN_ARCHIVES:
+            return True
+        maint = self.maintainer.lower()
+        if "debian.org" in maint or "debian.net" in maint:
             return True
         # Both empty → origin unknown (dpkg-query path) → treat as Debian
         if not self.origin and not self.archive:
@@ -152,7 +177,8 @@ class Package:
         return (
             f"Package(name={self.name!r}, version={self.version!r}, "
             f"source={self.source!r}, source_version={self.source_version!r}, "
-            f"origin={self.origin!r}, archive={self.archive!r})"
+            f"origin={self.origin!r}, archive={self.archive!r}, "
+            f"maintainer={self.maintainer!r})"
         )
 
     @classmethod
@@ -186,6 +212,8 @@ class Package:
 
         pkg_origin: str = getattr(pf, "origin", "")
         pkg_archive: str = getattr(pf, "archive", "")
+        raw_maint = getattr(records, "maintainer", "")
+        pkg_maintainer: str = raw_maint if isinstance(raw_maint, str) else ""
 
         # When origin is empty the installed version's PackageFile has no repo
         # metadata (typically archive='now' for a pending upgrade).  If a newer
@@ -204,6 +232,11 @@ class Package:
                 records.lookup((cpf, cidx))
                 pkg_origin = getattr(cpf, "origin", "")
                 pkg_archive = getattr(cpf, "archive", "")
+                if not pkg_maintainer:
+                    raw_cand_maint = getattr(records, "maintainer", "")
+                    pkg_maintainer = (
+                        raw_cand_maint if isinstance(raw_cand_maint, str) else ""
+                    )
 
         return cls(
             pkg.name,
@@ -212,13 +245,99 @@ class Package:
             Version(pkg_source_version),
             origin=pkg_origin,
             archive=pkg_archive,
+            maintainer=pkg_maintainer,
         )
+
+
+def _get_installed_packages_system_apt() -> list[Package] | None:
+    """Run system python3 to access apt_pkg when the current interpreter lacks it.
+
+    This happens when running inside a virtualenv whose Python version does not
+    match the system's python3-apt C-extension (e.g. uv managed Python 3.13 on a
+    system with python3-apt compiled for Python 3.14).
+    """
+    system_python = "/usr/bin/python3"
+    if not os.path.exists(system_python):
+        return None
+    if os.path.realpath(system_python) == os.path.realpath(sys.executable):
+        return None
+
+    script = """
+import apt_pkg, json, sys
+try:
+    apt_pkg.init()
+    cache = apt_pkg.Cache(progress=None)
+    policy = apt_pkg.Policy(cache)
+    records = apt_pkg.PackageRecords(cache)
+    pkgs = []
+    for pkg in cache.packages:
+        ver = pkg.current_ver
+        if ver:
+            pf, idx = ver.file_list[0]
+            records.lookup((pf, idx))
+            src = records.source_pkg or pkg.name
+            src_ver = records.source_ver or ver.ver_str
+            orig = getattr(pf, 'origin', '')
+            arch = getattr(pf, 'archive', '')
+            maint = getattr(records, 'maintainer', '') or ''
+            if not orig:
+                cver = policy.get_candidate_ver(pkg)
+                if cver and cver > ver:
+                    cpf, cidx = cver.file_list[0]
+                    records.lookup((cpf, cidx))
+                    orig = getattr(cpf, 'origin', '')
+                    arch = getattr(cpf, 'archive', '')
+                    if not maint:
+                        maint = getattr(records, 'maintainer', '') or ''
+            pkgs.append((pkg.name, ver.ver_str, src, src_ver, orig, arch, maint))
+    json.dump(pkgs, sys.stdout)
+except Exception as e:
+    sys.exit(1)
+"""
+    try:
+        res = subprocess.run(
+            [system_python, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=True,
+        )
+        data = json.loads(res.stdout)
+        packages: list[Package] = []
+        for item in data:
+            if len(item) == 7:
+                name, ver, src, src_ver, orig, arch, maint = item
+            else:
+                name, ver, src, src_ver, orig, arch = item[:6]
+                maint = ""
+            try:
+                packages.append(
+                    Package(
+                        name,
+                        Version(ver),
+                        src,
+                        Version(src_ver),
+                        origin=orig,
+                        archive=arch,
+                        maintainer=maint,
+                    )
+                )
+            except ValueError:
+                continue
+        logger.info(
+            "Found %d installed packages using system python3 apt_pkg bridge",
+            len(packages),
+        )
+        return packages
+    except Exception as exc:
+        logger.debug("System python apt_pkg bridge failed: %s", exc)
+        return None
 
 
 def get_installed_packages() -> list[Package]:
     """
     Get installed packages using python-apt (apt_pkg.Cache) if available,
-    otherwise falling back to dpkg-query.
+    falling back to system python3 apt_pkg bridge, and finally to dpkg-query.
     """
     packages = []
 
@@ -239,9 +358,14 @@ def get_installed_packages() -> list[Package]:
             return packages
         except Exception as e:
             logger.warning(
-                "Failed to read apt cache, falling back to dpkg-query: %s",
+                "Failed to read apt cache, falling back to system python3 bridge: %s",
                 e,
             )
+
+    # Try system python3 bridge if apt_pkg is unavailable in current interpreter
+    system_packages = _get_installed_packages_system_apt()
+    if system_packages is not None:
+        return system_packages
 
     # Fallback to dpkg-query
     if shutil.which("dpkg-query"):
@@ -249,11 +373,9 @@ def get_installed_packages() -> list[Package]:
             cmd = [
                 "dpkg-query",
                 "-W",
-                "-f=${db:Status-Status}\\t${Package}\\t${Version}\\t${source:Package}\\t${source:Version}\\n",
+                "-f=${db:Status-Status}\\t${Package}\\t${Version}\\t${source:Package}\\t${source:Version}\\t${Maintainer}\\n",
             ]
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             for line in result.stdout.splitlines():
                 if not line.strip():
                     continue
@@ -265,6 +387,7 @@ def get_installed_packages() -> list[Package]:
                     pkg_source_version = (
                         parts[4] if len(parts) > 4 and parts[4] else pkg_version
                     )
+                    pkg_maint = parts[5] if len(parts) > 5 else ""
 
                     try:
                         packages.append(
@@ -273,6 +396,7 @@ def get_installed_packages() -> list[Package]:
                                 Version(pkg_version),
                                 pkg_source,
                                 Version(pkg_source_version),
+                                maintainer=pkg_maint,
                             )
                         )
                     except ValueError as e:

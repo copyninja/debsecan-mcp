@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_version() -> str:
     try:
         return importlib.metadata.version("debvulns")
@@ -176,6 +177,7 @@ _SERVICE_RESTART_INFO = Gauge(
 # Metric population
 # ---------------------------------------------------------------------------
 
+
 def _update_metrics(result: ScanResult, suite: str) -> None:
     """Repopulate all Prometheus metrics from a ScanResult snapshot."""
 
@@ -256,9 +258,7 @@ def _update_metrics(result: ScanResult, suite: str) -> None:
                 fix_version=_fix_version(v),
             ).set(1)
 
-            _EPSS_SCORE.labels(cve=v.bug_id, package=pkg_name).set(
-                v.epss_score
-            )
+            _EPSS_SCORE.labels(cve=v.bug_id, package=pkg_name).set(v.epss_score)
             _EPSS_PERCENTILE.labels(cve=v.bug_id, package=pkg_name).set(
                 v.epss_percentile
             )
@@ -275,6 +275,7 @@ def _update_metrics(result: ScanResult, suite: str) -> None:
 # ---------------------------------------------------------------------------
 # HTTP request handler
 # ---------------------------------------------------------------------------
+
 
 class _MetricsHandler(http.server.BaseHTTPRequestHandler):
     """Minimal HTTP handler serving /metrics and health endpoints."""
@@ -322,6 +323,7 @@ class _MetricsHandler(http.server.BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 # Exporter server
 # ---------------------------------------------------------------------------
+
 
 class ExporterServer:
     """Wraps a TCPServer and runs it in its own daemon thread."""

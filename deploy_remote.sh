@@ -81,7 +81,7 @@ sudo chown debian:debian /opt/debvulns
 export UV_PYTHON_INSTALL_DIR=/opt/debvulns/python
 
 echo "Creating virtual environment..."
-uv venv /opt/debvulns/venv --python 3.11
+uv venv /opt/debvulns/venv --python 3.11 --system-site-packages
 
 echo "Installing package..."
 uv pip install --python /opt/debvulns/venv "${WHL_FILE}"

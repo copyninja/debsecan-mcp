@@ -100,6 +100,28 @@ class TestPackageOrigin:
         pkg = Package("grafana", Version("13.1.0"), origin="", archive="now")
         assert pkg.is_debian_origin is False
 
+    def test_is_debian_origin_kernel_archive_now_with_debian_maintainer(self):
+        """archive='now' with empty origin but Debian maintainer → Debian origin."""
+        pkg = Package(
+            "linux-image-7.2.10+deb14-amd64",
+            Version("7.2.10-1"),
+            origin="",
+            archive="now",
+            maintainer="Debian Kernel Team <debian-kernel@lists.debian.org>",
+        )
+        assert pkg.is_debian_origin is True
+
+    def test_is_not_debian_origin_archive_now_with_third_party_maintainer(self):
+        """archive='now' with empty origin and third-party maintainer → not Debian."""
+        pkg = Package(
+            "grafana",
+            Version("13.1.0"),
+            origin="",
+            archive="now",
+            maintainer="contact@grafana.com",
+        )
+        assert pkg.is_debian_origin is False
+
     def test_is_debian_origin_unknown_defaults_to_true(self):
         """Both origin and archive empty (dpkg-query fallback) → treat as Debian."""
         pkg = Package("somelocalpkg", Version("1.0"))
@@ -261,9 +283,10 @@ class TestGetInstalledPackages:
     def test_get_installed_packages_fallback_dpkg_query(self, mocker):
         mocker.patch("debvulns.package._has_apt_pkg", False)
         mocker.patch("debvulns.package.apt_pkg", None)
+        mocker.patch("debvulns.package._get_installed_packages_system_apt", return_value=None)
         mocker.patch("shutil.which", return_value=True)
 
-        mock_stdout = "installed\tcurl\t8.5.0-1\tcurl\t8.5.0-1\ninstalled\tlibc6\t2.36-9+deb12u7\tglibc\t2.36-9\n"
+        mock_stdout = "installed\tcurl\t8.5.0-1\tcurl\t8.5.0-1\tDebian\ninstalled\tlibc6\t2.36-9+deb12u7\tglibc\t2.36-9\tGNU\n"
         mock_run = MagicMock()
         mock_run.stdout = mock_stdout
         mocker.patch("subprocess.run", return_value=mock_run)
@@ -276,18 +299,30 @@ class TestGetInstalledPackages:
         assert str(packages[0].version) == "8.5.0-1"
         assert packages[0].source == "curl"
         assert str(packages[0].source_version) == "8.5.0-1"
+        assert packages[0].maintainer == "Debian"
 
         assert packages[1].name == "libc6"
         assert str(packages[1].version) == "2.36-9+deb12u7"
         assert packages[1].source == "glibc"
         assert str(packages[1].source_version) == "2.36-9"
+        assert packages[1].maintainer == "GNU"
 
     def test_get_installed_packages_all_failed(self, mocker):
         mocker.patch("debvulns.package._has_apt_pkg", False)
         mocker.patch("debvulns.package.apt_pkg", None)
+        mocker.patch("debvulns.package._get_installed_packages_system_apt", return_value=None)
         mocker.patch("shutil.which", return_value=False)
 
         packages = get_installed_packages()
         assert isinstance(packages, list)
         assert len(packages) == 0
+
+    def test_get_installed_packages_system_apt_used(self, mocker):
+        mocker.patch("debvulns.package._has_apt_pkg", False)
+        mocker.patch("debvulns.package.apt_pkg", None)
+        mock_bridge = [Package("bridgepkg", Version("1.0"))]
+        mocker.patch("debvulns.package._get_installed_packages_system_apt", return_value=mock_bridge)
+
+        packages = get_installed_packages()
+        assert packages == mock_bridge
 

@@ -251,9 +251,7 @@ async def async_main():
     vuln_cache_path = (
         os.path.join(cache_dir, f"vulnerabilities_{suite}.json") if use_cache else None
     )
-    osv_cache_path = (
-        os.path.join(cache_dir, "osv_results.json") if use_cache else None
-    )
+    osv_cache_path = os.path.join(cache_dir, "osv_results.json") if use_cache else None
 
     # Load EPSS
     epss_data = None
@@ -349,7 +347,11 @@ async def async_main():
         osv_results: list[dict] = []
 
         # Try loading from cache first.
-        if use_cache and osv_cache_path and is_cache_valid(osv_cache_path, osv_cache_max_age):
+        if (
+            use_cache
+            and osv_cache_path
+            and is_cache_valid(osv_cache_path, osv_cache_max_age)
+        ):
             logger.debug(f"Loading OSV results from cache: {osv_cache_path}")
             try:
                 with open(osv_cache_path) as f:

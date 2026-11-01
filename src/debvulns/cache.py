@@ -35,7 +35,7 @@ class ScanResult:
     scan_ok: bool = False
 
     # Restart / reboot state; None = detection not run or unsupported (e.g. container)
-    restart_info: "RestartInfo | None" = None
+    restart_info: RestartInfo | None = None
 
 
 # Import here (after ScanResult definition) to avoid circular imports at module load

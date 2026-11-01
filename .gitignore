@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+.tox/
+
+# Coverage and test artifacts
+.coverage
+coverage.xml
+htmlcov/

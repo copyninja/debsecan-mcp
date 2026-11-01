@@ -72,10 +72,11 @@ class RestartInfo:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_text(path: str) -> str | None:
     """Read a small text file, returning None on any error."""
     try:
-        with open(path, "r", errors="replace") as fh:
+        with open(path, errors="replace") as fh:
             return fh.read()
     except OSError:
         return None
@@ -157,6 +158,7 @@ def _exe_basename(pid: int) -> str | None:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def detect_services_needing_restart() -> list[str]:
     """Return a deduplicated list of service/process names that need restarting.
 
@@ -219,8 +221,12 @@ def detect_kernel_reboot() -> tuple[bool, str, str | None]:
     expected: str | None = None
     try:
         result = subprocess.run(
-            ["dpkg-query", "-W", "-f=${Package}\t${Version}\t${Status}\n",
-             "linux-image-*"],
+            [
+                "dpkg-query",
+                "-W",
+                "-f=${Package}\t${Version}\t${Status}\n",
+                "linux-image-*",
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -252,7 +258,7 @@ def detect_kernel_reboot() -> tuple[bool, str, str | None]:
             # Extract the version part from the filename
             latest = os.path.basename(vmlinuz_files[0])
             if latest.startswith("vmlinuz-"):
-                expected = latest[len("vmlinuz-"):]
+                expected = latest[len("vmlinuz-") :]
 
     if expected is None:
         logger.debug("Could not determine expected kernel version")
@@ -264,7 +270,9 @@ def detect_kernel_reboot() -> tuple[bool, str, str | None]:
     # A simple substring check handles the common case; version_compare handles the rest
     try:
         # Try exact match first (running is a substring of expected)
-        reboot_needed = running not in expected and version_compare(expected, running) > 0
+        reboot_needed = (
+            running not in expected and version_compare(expected, running) > 0
+        )
     except Exception:
         reboot_needed = running not in expected
 

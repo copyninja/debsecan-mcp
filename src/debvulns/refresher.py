@@ -47,14 +47,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Backoff constants (boot phase only)
 # ---------------------------------------------------------------------------
-BACKOFF_BASE: float = 30.0      # first retry delay in seconds
-BACKOFF_MAX: float = 1800.0     # hard cap (30 min)
-BACKOFF_JITTER: float = 0.10    # ± fraction applied to computed delay
+BACKOFF_BASE: float = 30.0  # first retry delay in seconds
+BACKOFF_MAX: float = 1800.0  # hard cap (30 min)
+BACKOFF_JITTER: float = 0.10  # ± fraction applied to computed delay
 
 
 def _backoff_delay(attempt: int) -> float:
     """Return a jittered exponential delay for the given attempt number (0-based)."""
-    delay = min(BACKOFF_BASE * (2 ** attempt), BACKOFF_MAX)
+    delay = min(BACKOFF_BASE * (2**attempt), BACKOFF_MAX)
     jitter = delay * BACKOFF_JITTER
     return delay + random.uniform(-jitter, jitter)
 
@@ -62,6 +62,7 @@ def _backoff_delay(attempt: int) -> float:
 # ---------------------------------------------------------------------------
 # Serialisation helpers (reused from cli.py pattern)
 # ---------------------------------------------------------------------------
+
 
 def _serialize_vulnerabilities(
     feed: dict[str, list[vulnerability.Vulnerability]],
@@ -138,6 +139,7 @@ def _atomic_write_json(data: object, dest_path: str) -> None:
 # Async scan pipeline
 # ---------------------------------------------------------------------------
 
+
 async def _run_scan(
     suite: str,
     vuln_url: str | None,
@@ -178,9 +180,7 @@ async def _run_scan(
                 logger.warning("Failed to write vulnerability cache: %s", exc)
 
     # --- 2. EPSS data -------------------------------------------------------
-    epss_cache_path = (
-        os.path.join(cache_dir, "epss.json") if cache_dir else None
-    )
+    epss_cache_path = os.path.join(cache_dir, "epss.json") if cache_dir else None
     epss_data: dict[str, dict[str, float]] | None = None
 
     if epss_cache_path and _is_fresh(epss_cache_path, refresh_interval):
@@ -241,9 +241,9 @@ async def _run_scan(
                 detected.append(v_copy)
 
     # --- 5. Deduplicate (cve, package) pairs --------------------------------
-    unique: dict[tuple[str, str], vulnerability.Vulnerability] = {}
+    unique: dict[tuple[str, str | None], vulnerability.Vulnerability] = {}
     for v in detected:
-        key = (v.bug_id, v.installed_package)  # type: ignore[arg-type]
+        key = (v.bug_id, v.installed_package)
         if key not in unique:
             unique[key] = v
 
@@ -340,6 +340,7 @@ async def _run_scan(
 # ---------------------------------------------------------------------------
 # Refresh thread
 # ---------------------------------------------------------------------------
+
 
 class RefreshThread(threading.Thread):
     """Daemon thread that periodically refreshes the vulnerability cache.

@@ -623,10 +623,10 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "running",
+          "fields": "",
           "values": false
         },
-        "textMode": "value"
+        "textMode": "name"
       },
       "targets": [
         {
@@ -636,30 +636,12 @@
           },
           "editorMode": "code",
           "expr": "debvulns_kernel_info{instance=~\"^$instance$\"}",
-          "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "{{running}}"
         }
       ],
       "title": "Running Kernel",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "job": true,
-              "expected": true,
-              "instance": true
-            },
-            "renameByName": {
-              "running": "Running Kernel"
-            }
-          }
-        }
-      ],
       "type": "stat"
     },
     {
@@ -693,10 +675,10 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "expected",
+          "fields": "",
           "values": false
         },
-        "textMode": "value"
+        "textMode": "name"
       },
       "targets": [
         {
@@ -706,30 +688,12 @@
           },
           "editorMode": "code",
           "expr": "debvulns_kernel_info{instance=~\"^$instance$\"}",
-          "format": "table",
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "{{expected}}"
         }
       ],
       "title": "Expected Kernel",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "job": true,
-              "running": true,
-              "instance": true
-            },
-            "renameByName": {
-              "expected": "Expected Kernel"
-            }
-          }
-        }
-      ],
       "type": "stat"
     },
     {

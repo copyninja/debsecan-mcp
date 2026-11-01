@@ -19,6 +19,7 @@ Strategy
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -48,13 +49,6 @@ class OsvVulnerability:
     def cvss_base_score(self) -> float:
         """Extract the numeric CVSS base score (0.0 if not available)."""
         for entry in self.severity:
-            vector = entry.get("score", "")
-            # CVSS vectors encode the base score after the last '/'
-            # e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:L"
-            # We derive the score from the AV metric combination instead of
-            # parsing the full vector; use the pre-computed score if OSV
-            # exposes it (some records do), otherwise return 5.0 as a
-            # conservative mid-range default.
             score_val = entry.get("base_score")
             if score_val is not None:
                 try:
@@ -210,6 +204,27 @@ async def check_non_debian_packages(
     osv_cache: dict[str, OsvVulnerability | None] = {}
 
     async with httpx.AsyncClient(timeout=10.0) as client:
+        # Collect all unique candidate CVE IDs across all non-Debian packages
+        cves_to_fetch: set[str] = set()
+        for pkg in non_debian_pkgs:
+            candidate_vulns = vuln_feed.get(pkg.source, None)
+            if candidate_vulns is None:
+                candidate_vulns = vuln_feed.get(pkg.name, [])
+            for deb_vuln in candidate_vulns:
+                cves_to_fetch.add(deb_vuln.bug_id)
+
+        # Concurrently fetch candidate CVEs with a semaphore limit
+        sem = asyncio.Semaphore(10)
+
+        async def _fetch(cve: str) -> tuple[str, OsvVulnerability | None]:
+            async with sem:
+                return cve, await fetch_osv_vuln(cve, client)
+
+        if cves_to_fetch:
+            fetched = await asyncio.gather(*[_fetch(c) for c in cves_to_fetch])
+            for cve_id, vuln_data in fetched:
+                osv_cache[cve_id] = vuln_data
+
         for pkg in non_debian_pkgs:
             # Find candidate vulnerabilities from the Debian feed.
             candidate_vulns = vuln_feed.get(pkg.source, None)
@@ -224,11 +239,7 @@ async def check_non_debian_packages(
                     continue
                 seen_cves.add(cve_id)
 
-                # Fetch (or reuse cached) OSV data.
-                if cve_id not in osv_cache:
-                    osv_cache[cve_id] = await fetch_osv_vuln(cve_id, client)
-
-                osv_vuln = osv_cache[cve_id]
+                osv_vuln = osv_cache.get(cve_id)
                 if osv_vuln is None:
                     # OSV has no data for this CVE → can't cross-check;
                     # skip silently to avoid false positives.
